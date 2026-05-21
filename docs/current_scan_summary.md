@@ -40,10 +40,10 @@ python3 src/import/scan_workbook.py \
 | 420 | 黃浩全報 | 77000 |
 
 後續合報分攤計算必須能重算這四列的各科分攤，或在 dry-run report 中列出合理尾差。
+這四列只是目前最明確的 golden sample；pricing engine 必須套用到全部 cohort，包含國三升高一、高一升高二、高二升高三與高三既有資料。
 
 ## 已確認
 
 - 第一版 scanner 不是高二專用，會掃完整 workbook。
 - scanner report 預設遮蔽姓名、電話、身分證、生日欄位。
 - 真實快照與 report 皆被 `.gitignore` 排除。
-

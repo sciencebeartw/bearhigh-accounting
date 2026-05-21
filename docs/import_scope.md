@@ -37,6 +37,8 @@ snapshotBatch
 
 - parser 不得 hard-code 只讀 `113學年度(110高二)`。
 - 高二升高三尾列只作合報分攤 golden sample。
+- pricing engine 不得 hard-code 只算高二升高三；國三升高一、高一升高二、高二升高三、高三既有資料都可能有合報優惠、學費抵用券或手動折扣。
+- 每個 cohort 都要輸出合報套餐辨識、抵用券分攤、手動折扣分攤與各科實際收入。
 - 所有 cohort 都要產生欄位結構與疑點報告。
 - 國三升高一若來源不同，也應轉成同一個 normalized import record，再進入 dry-run。
 
@@ -47,7 +49,7 @@ snapshotBatch
 - 新增/消失學生。
 - 課程勾選變化。
 - 學費總額變化。
-- 合報套餐辨識與各科分攤。
+- 每個 cohort 的合報套餐辨識、抵用券分攤、手動折扣分攤與各科分攤。
 - 高二升高三 golden sample 驗證。
 - 國三升高一 / 高一升高二 / 高二升高三之間欄位差異。
 
@@ -62,4 +64,3 @@ snapshotBatch
 - 原始 row/column 座標
 - 正規化後資料
 - dry-run 差異摘要
-
