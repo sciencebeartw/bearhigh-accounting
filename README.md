@@ -4,6 +4,8 @@
 
 本專案先獨立於 `bear-admin/high` 與 Dashboard 開發。`bear-admin/high` 維持家長/學生查詢端；行政老師點名也先維持 Google Sheet。這裡只解決使用者本人每月最痛的帳務與老師薪資整理流程。
 
+Firebase 專案也獨立使用 `bearhigh`，避免開發期與 `sciencebear-admin` 正式行政資料互相污染。
+
 ## 第一階段目標
 
 1. 讀取高中部學生名冊 Numbers 匯出的 `.xlsx` 快照。
@@ -28,3 +30,10 @@
 - Google Sheet：`114學年 山熊升大 學生名單`
 - Google Sheet id：`1HrLdpUdv_zDtFczsNW-v1N-nXnL1-YgygiXz4siaikA`
 
+## Firebase
+
+- Project ID：`bearhigh`
+- Web App：`BearHigh Accounting`
+- Realtime Database：`bearhigh-default-rtdb`
+- Location：`asia-southeast1`
+- 開發期 rules：預設全部拒絕讀寫，等 Auth / admin model 決定後再開節點。
