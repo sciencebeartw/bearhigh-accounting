@@ -9,6 +9,26 @@
 
 ## 第一版 MVP
 
+### 0. 本機帳務工作台
+
+已完成第一版純前端工作台，先用 `localStorage` 保存草稿，不寫 Firebase。
+
+已包含：
+
+- 學費登記表單。
+- 即時各科收入分攤表。
+- 月底加入/退出異動紀錄。
+- 老師薪資草表。
+- JSON / CSV 匯出。
+- Node 內建測試覆蓋主要 pricing rules。
+
+尚未完成：
+
+- 真實 workbook normalized import。
+- Firebase Auth / admin allowlist。
+- Firebase 寫入。
+- 老師薪資表輸出成完全對齊 Numbers 的 Excel/Sheet 格式。
+
 ### 1. 全檔掃描
 
 讀取 Numbers 匯出的 `.xlsx` 快照，掃描全部分頁：

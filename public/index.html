@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>BearHigh 帳務</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">BearHigh</p>
+        <h1>高中帳務工作台</h1>
+      </div>
+      <div class="status-pill" id="storageStatus">本機草稿</div>
+    </header>
+
+    <main class="workspace">
+      <nav class="tabs" aria-label="功能切換">
+        <button class="tab is-active" data-tab="tuition" type="button">學費</button>
+        <button class="tab" data-tab="events" type="button">異動</button>
+        <button class="tab" data-tab="payroll" type="button">薪資</button>
+        <button class="tab" data-tab="records" type="button">紀錄</button>
+      </nav>
+
+      <section class="panel is-active" data-panel="tuition">
+        <form class="form-grid" id="tuitionForm">
+          <label>
+            <span>學生</span>
+            <input name="studentName" autocomplete="off" required>
+          </label>
+          <label>
+            <span>年級 / cohort</span>
+            <select name="cohort">
+              <option value="國三升高一">國三升高一</option>
+              <option value="高一升高二">高一升高二</option>
+              <option value="高二升高三">高二升高三</option>
+              <option value="高三既有資料">高三既有資料</option>
+            </select>
+          </label>
+          <label>
+            <span>學校</span>
+            <input name="school" autocomplete="off">
+          </label>
+          <label>
+            <span>定價版本</span>
+            <select name="pricingVersion" id="pricingVersion"></select>
+          </label>
+          <label>
+            <span>套餐</span>
+            <select name="packageId" id="packageId"></select>
+          </label>
+          <label>
+            <span>實收金額</span>
+            <input name="paidAmount" inputmode="numeric" placeholder="例：61800">
+          </label>
+          <label>
+            <span>額外合報優惠</span>
+            <input name="packageDiscount" inputmode="numeric" placeholder="例：1000">
+          </label>
+          <label>
+            <span>學費抵用券</span>
+            <input name="voucher" inputmode="numeric" placeholder="例：3000">
+          </label>
+          <label>
+            <span>手動折扣</span>
+            <input name="manualDiscount" inputmode="numeric">
+          </label>
+          <label class="wide">
+            <span>備註</span>
+            <input name="note" autocomplete="off">
+          </label>
+
+          <fieldset class="course-picker wide">
+            <legend>課程</legend>
+            <div id="courseOptions" class="course-options"></div>
+          </fieldset>
+
+          <div class="actions wide">
+            <button class="primary" type="submit">記入學費</button>
+            <button class="ghost" id="clearTuitionForm" type="button">清空</button>
+          </div>
+        </form>
+
+        <section class="result-band" aria-live="polite">
+          <div>
+            <p class="eyebrow">分攤結果</p>
+            <h2 id="allocationTotal">$0</h2>
+          </div>
+          <div id="allocationWarnings" class="warnings"></div>
+        </section>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>科目</th>
+                <th>規則金額</th>
+                <th>合報優惠</th>
+                <th>抵用券</th>
+                <th>手動折扣</th>
+                <th>實際收入</th>
+              </tr>
+            </thead>
+            <tbody id="allocationRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="events">
+        <form class="form-grid" id="eventForm">
+          <label>
+            <span>班級 / 課程</span>
+            <input name="courseName" required autocomplete="off">
+          </label>
+          <label>
+            <span>日期</span>
+            <input name="date" type="date" required>
+          </label>
+          <label>
+            <span>第幾堂</span>
+            <input name="sessionNo" inputmode="numeric" required>
+          </label>
+          <label>
+            <span>學生</span>
+            <input name="studentName" required autocomplete="off">
+          </label>
+          <label>
+            <span>異動</span>
+            <select name="action">
+              <option value="加入">加入</option>
+              <option value="退出">退出</option>
+            </select>
+          </label>
+          <label>
+            <span>備註</span>
+            <input name="note" autocomplete="off">
+          </label>
+          <div class="actions wide">
+            <button class="primary" type="submit">記入異動</button>
+          </div>
+        </form>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>班級 / 課程</th>
+                <th>堂數</th>
+                <th>學生</th>
+                <th>異動</th>
+                <th>備註</th>
+              </tr>
+            </thead>
+            <tbody id="eventRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="payroll">
+        <form class="form-grid" id="payrollForm">
+          <label>
+            <span>月份</span>
+            <input name="month" type="month" required>
+          </label>
+          <label>
+            <span>老師</span>
+            <input name="teacherName" required autocomplete="off">
+          </label>
+          <label>
+            <span>班級 / 課程</span>
+            <input name="courseName" required autocomplete="off">
+          </label>
+          <label>
+            <span>堂數</span>
+            <input name="sessionCount" inputmode="numeric" required>
+          </label>
+          <label>
+            <span>鐘點 / 單堂</span>
+            <input name="rate" inputmode="numeric" required>
+          </label>
+          <label>
+            <span>調整</span>
+            <input name="adjustment" inputmode="numeric">
+          </label>
+          <label class="wide">
+            <span>備註</span>
+            <input name="note" autocomplete="off">
+          </label>
+          <div class="actions wide">
+            <button class="primary" type="submit">加入薪資草表</button>
+          </div>
+        </form>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>月份</th>
+                <th>老師</th>
+                <th>班級 / 課程</th>
+                <th>堂數</th>
+                <th>鐘點</th>
+                <th>調整</th>
+                <th>小計</th>
+              </tr>
+            </thead>
+            <tbody id="payrollRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="records">
+        <div class="record-toolbar">
+          <button class="ghost" id="exportJson" type="button">匯出 JSON</button>
+          <button class="ghost" id="exportTuitionCsv" type="button">匯出學費 CSV</button>
+          <button class="danger" id="clearAll" type="button">清除本機草稿</button>
+        </div>
+        <div class="record-grid">
+          <section>
+            <h2>學費紀錄</h2>
+            <div id="tuitionRecords" class="record-list"></div>
+          </section>
+          <section>
+            <h2>薪資草表</h2>
+            <div id="payrollRecords" class="record-list"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <template id="emptyRowTemplate">
+      <tr>
+        <td colspan="6" class="empty">尚無資料</td>
+      </tr>
+    </template>
+
+    <script type="module" src="./js/app.mjs"></script>
+  </body>
+</html>
