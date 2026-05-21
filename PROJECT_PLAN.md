@@ -16,6 +16,16 @@
 - 學生/學費主表：高一、高二、高三、空白模板。
 - 老師/薪資參考表：化學、物理、英文、數學、社會、國文等師資分頁。
 
+匯入 scope 一開始就是全 cohort：
+
+- 國三升高一。
+- 高一升高二。
+- 高二升高三。
+- 高三既有資料。
+- 後續招生期新增 cohort。
+
+高二升高三只是合報分攤的 golden sample，不是唯一支援範圍。
+
 輸出：
 
 - 每個分頁 rows / cols / 非空格數。
@@ -93,4 +103,21 @@
 - 各科分攤差異。
 - 尾列 golden sample 驗證結果。
 - 老師分頁格式差異。
+- 國三升高一 / 高一升高二 / 高二升高三 / 高三既有資料的欄位差異。
 
+## 匯入批次
+
+一次匯入應以「快照批次」為單位，而不是以單一分頁為單位。
+
+```text
+snapshotBatch
+  sourceWorkbook
+  exportedAt
+  sheets[]
+  cohorts[]
+  dryRunReport
+  approvedBy
+  approvedAt
+```
+
+同一批次可以包含多個 cohort。未來如果國三升高一資料來自另一個 Google Sheet 或另一個 Numbers 檔，也應加入同一個 batch manifest，一起產生 diff report，再決定是否寫入 Firebase。
