@@ -1,0 +1,12 @@
+data/snapshots/*
+data/reports/*
+!data/snapshots/.gitkeep
+!data/reports/.gitkeep
+*.xlsx
+*.numbers
+*.csv
+*.tsv
+__pycache__/
+.DS_Store
+.env
+
