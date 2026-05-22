@@ -25,6 +25,7 @@ const elements = {
   payrollRows: document.querySelector('#payrollRows'),
   tuitionRecords: document.querySelector('#tuitionRecords'),
   payrollRecords: document.querySelector('#payrollRecords'),
+  saveTuition: document.querySelector('#saveTuition'),
   storageStatus: document.querySelector('#storageStatus')
 };
 
@@ -87,11 +88,18 @@ function renderAllocationPreview() {
   const result = calculateTuitionAllocation(data);
 
   elements.allocationTotal.textContent = `$${formatMoney(result.totals.paid)}`;
-  elements.allocationWarnings.innerHTML = result.warnings.map((warning) => `<div>${escapeHtml(warning)}</div>`).join('');
+  const messages = [
+    ...result.errors.map((message) => `<div class="error">${escapeHtml(message)}</div>`),
+    ...result.warnings.map((warning) => `<div>${escapeHtml(warning)}</div>`)
+  ];
+  elements.saveTuition.disabled = result.errors.length > 0;
+  elements.allocationWarnings.innerHTML = messages.join('');
   elements.allocationRows.innerHTML = result.rows.length
     ? result.rows.map((row) => `
       <tr>
         <td>${escapeHtml(row.courseName)}</td>
+        <td class="money">${formatMoney(row.listPrice)}</td>
+        <td class="money">${formatMoney(row.builtInPackageDiscount)}</td>
         <td class="money">${formatMoney(row.baseAmount)}</td>
         <td class="money">${formatMoney(row.packageDiscount)}</td>
         <td class="money">${formatMoney(row.voucher)}</td>
@@ -99,7 +107,7 @@ function renderAllocationPreview() {
         <td class="money">${formatMoney(row.revenueAmount)}</td>
       </tr>
     `).join('')
-    : emptyRow(6);
+    : emptyRow(8);
 }
 
 function emptyRow(colspan) {
@@ -188,7 +196,11 @@ function downloadFile(filename, content, type) {
 }
 
 function toCsv(rows) {
-  return rows.map((row) => row.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+  return rows.map((row) => row.map((cell) => {
+    const text = String(cell ?? '');
+    const safeText = /^[=+\-@]/.test(text) ? `'${text}` : text;
+    return `"${safeText.replace(/"/g, '""')}"`;
+  }).join(',')).join('\n');
 }
 
 elements.tabs.forEach((tab) => {
@@ -202,6 +214,10 @@ elements.tuitionForm.addEventListener('submit', (event) => {
   event.preventDefault();
   const data = getFormData(elements.tuitionForm);
   const allocation = calculateTuitionAllocation(data);
+  if (allocation.errors.length) {
+    renderAllocationPreview();
+    return;
+  }
 
   state.tuitionPayments.push({
     id: nowId('tuition'),
@@ -260,7 +276,7 @@ document.querySelector('#exportJson').addEventListener('click', () => {
 
 document.querySelector('#exportTuitionCsv').addEventListener('click', () => {
   const rows = [
-    ['建立時間', '學生', 'cohort', '學校', '課程', '實收', '科目', '規則金額', '合報優惠', '抵用券', '手動折扣', '實際收入', '備註']
+    ['建立時間', '學生', 'cohort', '學校', '課程', '實收', '科目', '原價', '內建合報優惠', '規則金額', '額外合報優惠', '抵用券', '手動折扣', '實際收入', '備註']
   ];
 
   for (const payment of state.tuitionPayments) {
@@ -273,6 +289,8 @@ document.querySelector('#exportTuitionCsv').addEventListener('click', () => {
         payment.courseNames.join(' / '),
         payment.allocation.totals.paid,
         row.courseName,
+        row.listPrice,
+        row.builtInPackageDiscount,
         row.baseAmount,
         row.packageDiscount,
         row.voucher,

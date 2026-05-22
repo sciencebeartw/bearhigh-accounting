@@ -85,6 +85,24 @@ export function parseMoney(value) {
   return Math.round(amount);
 }
 
+export function parseMoneyStrict(value, fieldName = '金額') {
+  if (value === null || value === undefined || String(value).trim() === '') {
+    return { amount: 0, error: null, provided: false };
+  }
+
+  const normalized = String(value).replace(/,/g, '').trim();
+  if (!/^\d+(\.\d+)?$/.test(normalized)) {
+    return { amount: 0, error: `${fieldName} 必須是 0 或正數。`, provided: true };
+  }
+
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount)) {
+    return { amount: 0, error: `${fieldName} 不是有效數字。`, provided: true };
+  }
+
+  return { amount: Math.round(amount), error: null, provided: true };
+}
+
 function distributeByWeights(total, weights) {
   const entries = Object.entries(weights).filter(([, weight]) => weight > 0);
   const weightTotal = entries.reduce((sum, [, weight]) => sum + weight, 0);
@@ -115,11 +133,20 @@ function buildGeneralWeights(courses, pricingVersion) {
 
   const count = courses.length;
   const packageTotal = rule.packages[count];
-  const baseTotal = packageTotal || rule.single * count;
-  const perCourse = distributeByWeights(baseTotal, Object.fromEntries(courses.map((id) => [id, 1])));
+  const listPriceTotal = rule.single * count;
+  const baseTotal = packageTotal || listPriceTotal;
+  const listByCourse = Object.fromEntries(courses.map((id) => [id, rule.single]));
+  const builtInPackageDiscount = Math.max(0, listPriceTotal - baseTotal);
+  const builtInPackageDiscountByCourse = distributeByWeights(builtInPackageDiscount, listByCourse);
+  const perCourse = Object.fromEntries(
+    courses.map((id) => [id, rule.single - (builtInPackageDiscountByCourse[id] || 0)])
+  );
 
   return {
+    listPriceTotal,
     expectedBaseTotal: baseTotal,
+    builtInPackageDiscount,
+    listByCourse,
     baseByCourse: perCourse,
     warnings: packageTotal
       ? []
@@ -134,7 +161,10 @@ function buildSpecialWeights(packageId) {
   }
 
   return {
+    listPriceTotal: special.total,
     expectedBaseTotal: special.total,
+    builtInPackageDiscount: 0,
+    listByCourse: { ...special.allocations },
     baseByCourse: { ...special.allocations },
     warnings: []
   };
@@ -142,18 +172,22 @@ function buildSpecialWeights(packageId) {
 
 export function calculateTuitionAllocation(input) {
   const courses = Array.from(new Set(input.courses || [])).filter(Boolean);
+  const errors = [];
   if (!courses.length) {
     return {
       rows: [],
       totals: {
+        listPrice: 0,
         base: 0,
+        builtInPackageDiscount: 0,
         packageDiscount: 0,
         voucher: 0,
         manualDiscount: 0,
         expectedRevenue: 0,
         paid: 0
       },
-      warnings: ['請至少選擇一門課。']
+      warnings: [],
+      errors: ['請至少選擇一門課。']
     };
   }
 
@@ -162,14 +196,29 @@ export function calculateTuitionAllocation(input) {
   const special = packageId === 'none' ? null : buildSpecialWeights(packageId);
   const basis = special || buildGeneralWeights(courses, pricingVersion);
   const basisCourseIds = Object.keys(basis.baseByCourse);
-  const packageDiscount = parseMoney(input.packageDiscount);
-  const voucher = parseMoney(input.voucher);
-  const manualDiscount = parseMoney(input.manualDiscount);
-  const paidInput = parseMoney(input.paidAmount);
+  const moneyFields = [
+    ['packageDiscount', '額外合報優惠'],
+    ['voucher', '學費抵用券'],
+    ['manualDiscount', '手動折扣'],
+    ['paidAmount', '實收金額']
+  ];
+  const parsedMoney = Object.fromEntries(
+    moneyFields.map(([key, label]) => {
+      const parsed = parseMoneyStrict(input[key], label);
+      if (parsed.error) errors.push(parsed.error);
+      return [key, parsed];
+    })
+  );
+  const packageDiscount = parsedMoney.packageDiscount.amount;
+  const voucher = parsedMoney.voucher.amount;
+  const manualDiscount = parsedMoney.manualDiscount.amount;
+  const paidInput = parsedMoney.paidAmount.amount;
+  const paidProvided = parsedMoney.paidAmount.provided;
   const discountTotal = packageDiscount + voucher + manualDiscount;
   const expectedRevenue = Math.max(0, basis.expectedBaseTotal - discountTotal);
-  const paid = paidInput || expectedRevenue;
+  const paid = paidProvided ? paidInput : expectedRevenue;
   const revenueByCourse = distributeByWeights(paid, basis.baseByCourse);
+  const builtInPackageDiscountByCourse = distributeByWeights(basis.builtInPackageDiscount, basis.listByCourse);
   const packageDiscountByCourse = distributeByWeights(packageDiscount, basis.baseByCourse);
   const voucherByCourse = distributeByWeights(voucher, basis.baseByCourse);
   const manualDiscountByCourse = distributeByWeights(manualDiscount, basis.baseByCourse);
@@ -177,23 +226,29 @@ export function calculateTuitionAllocation(input) {
 
   const missingCourses = courses.filter((id) => !basisCourseIds.includes(id));
   if (special && missingCourses.length) {
-    warnings.push(`特殊套餐未包含：${missingCourses.map(getCourseName).join('、')}。`);
+    errors.push(`特殊套餐未包含：${missingCourses.map(getCourseName).join('、')}。`);
   }
 
   const packageOnlyCourses = basisCourseIds.filter((id) => !courses.includes(id));
   if (special && packageOnlyCourses.length) {
-    warnings.push(`特殊套餐自動包含：${packageOnlyCourses.map(getCourseName).join('、')}。`);
+    errors.push(`特殊套餐需要勾選：${packageOnlyCourses.map(getCourseName).join('、')}。`);
   }
 
-  if (paidInput && paidInput !== expectedRevenue) {
+  if (paidProvided && !parsedMoney.paidAmount.error && paidInput !== expectedRevenue) {
     warnings.push(`實收 ${paidInput} 與規則推算 ${expectedRevenue} 不同，已依實收比例分攤。`);
+  }
+
+  if (discountTotal > basis.expectedBaseTotal) {
+    errors.push('優惠與抵用券總額不可大於套餐後金額。');
   }
 
   const rows = basisCourseIds
     .map((courseId) => ({
       courseId,
       courseName: getCourseName(courseId),
+      listPrice: basis.listByCourse[courseId] || 0,
       baseAmount: basis.baseByCourse[courseId] || 0,
+      builtInPackageDiscount: builtInPackageDiscountByCourse[courseId] || 0,
       packageDiscount: packageDiscountByCourse[courseId] || 0,
       voucher: voucherByCourse[courseId] || 0,
       manualDiscount: manualDiscountByCourse[courseId] || 0,
@@ -204,14 +259,17 @@ export function calculateTuitionAllocation(input) {
   return {
     rows,
     totals: {
+      listPrice: basis.listPriceTotal,
       base: basis.expectedBaseTotal,
+      builtInPackageDiscount: basis.builtInPackageDiscount,
       packageDiscount,
       voucher,
       manualDiscount,
       expectedRevenue,
       paid
     },
-    warnings
+    warnings,
+    errors
   };
 }
 
