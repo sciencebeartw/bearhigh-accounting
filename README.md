@@ -41,7 +41,25 @@ npm run start
 http://127.0.0.1:4173
 ```
 
-Firebase Hosting 設定已放入 `firebase.json`，但尚未部署 Hosting。正式部署前仍需先確認 Auth / rules / 是否允許純 localStorage 草稿版上線測試。
+前端網址預期走 GitHub Pages；`bearhigh` 只作資料庫 / Auth。正式線上測前需先建立 GitHub repository 與 Pages 設定。
+
+## Numbers 本機匯入
+
+目前可從 Numbers 匯出的 `.xlsx` 建立本機快照：
+
+```bash
+python3 src/import/extract_workbook.py \
+  --input /Users/huangboyu/Desktop/high_roster_export_temp.xlsx \
+  --output public/local-data/numbers_import_latest.json \
+  --summary-output data/reports/numbers_import_summary.json
+```
+
+`public/local-data/numbers_import_latest.json` 會包含真實學生與帳務資料，已被 `.gitignore` 排除，不得 commit。開本機工作台後，到「匯入」頁籤可載入這份快照。
+
+目前匯入範圍：
+
+- 學生/學費分頁：學生基本資料、課程勾選、學收、抵扣/抵用、繳費日期、退費、備註。
+- 老師/薪資分頁：老師名單區塊、月薪資/堂數區塊的 raw rows。
 
 ## 安全原則
 

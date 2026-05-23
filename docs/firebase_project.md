@@ -49,12 +49,12 @@ bearhigh/highPublic             新測試
 - 帳務、薪資節點不得公開讀取。
 - import batch 寫入必須帶 `importBatchId` 與使用者資訊。
 
-## Hosting
+## 前端部署
 
-`firebase.json` 已加入 Hosting 設定，public directory 為 `public/`。
+前端網址預期走 GitHub Pages，不走 Firebase Hosting。
 
-目前尚未部署 Hosting。第一版工作台仍是 localStorage 草稿版，正式上線測試前需確認：
+`bearhigh` 只作高中帳務資料庫 / Auth / 未來後端資料層。第一版工作台仍是 localStorage 草稿版，正式上線測試前需確認：
 
-- 是否接受先部署純前端草稿版。
+- 是否接受先用 GitHub Pages 部署純前端草稿版。
 - 是否要先加 Firebase Auth。
 - 是否要在 rules 開啟任何節點。

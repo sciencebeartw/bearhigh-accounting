@@ -23,10 +23,12 @@
 - 老師薪資草表。
 - JSON / CSV 匯出。
 - Node 內建測試覆蓋主要 pricing rules。
+- Numbers 本機匯入快照：學生/學費分頁與老師薪資分頁都先進 local JSON，工作台「匯入」頁籤可查看概況。
 
 尚未完成：
 
 - 真實 workbook normalized import。
+- 老師薪資表欄位完全正規化與可輸出。
 - Firebase Auth / admin allowlist。
 - Firebase 寫入。
 - 老師薪資表輸出成完全對齊 Numbers 的 Excel/Sheet 格式。

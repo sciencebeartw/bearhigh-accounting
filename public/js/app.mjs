@@ -9,6 +9,11 @@ const storageKey = 'bearhigh.accounting.v1';
 const state = loadState();
 let clearArmedUntil = 0;
 
+state.tuitionPayments ||= [];
+state.membershipEvents ||= [];
+state.payrollRuns ||= [];
+state.importSnapshot ||= null;
+
 const elements = {
   tabs: document.querySelectorAll('.tab'),
   panels: document.querySelectorAll('.panel'),
@@ -25,6 +30,13 @@ const elements = {
   payrollRows: document.querySelector('#payrollRows'),
   tuitionRecords: document.querySelector('#tuitionRecords'),
   payrollRecords: document.querySelector('#payrollRecords'),
+  importStatus: document.querySelector('#importStatus'),
+  importSummary: document.querySelector('#importSummary'),
+  importSheetRows: document.querySelector('#importSheetRows'),
+  importTeacherRows: document.querySelector('#importTeacherRows'),
+  importPayrollBlockRows: document.querySelector('#importPayrollBlockRows'),
+  importStudentRows: document.querySelector('#importStudentRows'),
+  importStudentSearch: document.querySelector('#importStudentSearch'),
   saveTuition: document.querySelector('#saveTuition'),
   storageStatus: document.querySelector('#storageStatus')
 };
@@ -34,13 +46,15 @@ function loadState() {
     return JSON.parse(localStorage.getItem(storageKey)) || {
       tuitionPayments: [],
       membershipEvents: [],
-      payrollRuns: []
+      payrollRuns: [],
+      importSnapshot: null
     };
   } catch {
     return {
       tuitionPayments: [],
       membershipEvents: [],
-      payrollRuns: []
+      payrollRuns: [],
+      importSnapshot: null
     };
   }
 }
@@ -172,11 +186,108 @@ function renderRecords() {
     : '<div class="record-item"><p>尚無薪資草表</p></div>';
 }
 
+function renderImport() {
+  const snapshot = state.importSnapshot;
+  if (!snapshot) {
+    elements.importStatus.textContent = '尚未載入';
+    elements.importSummary.innerHTML = '<div class="record-item"><p>尚無匯入快照</p></div>';
+    elements.importSheetRows.innerHTML = emptyRow(6);
+    elements.importTeacherRows.innerHTML = emptyRow(5);
+    elements.importPayrollBlockRows.innerHTML = emptyRow(4);
+    elements.importStudentRows.innerHTML = emptyRow(6);
+    return;
+  }
+
+  const summary = snapshot.summary || {};
+  elements.importStatus.textContent = `已載入 ${summary.studentCount || 0} 筆`;
+  elements.importSummary.innerHTML = [
+    ['學生列', summary.studentCount || 0],
+    ['學費欄位', summary.tuitionEntryCount || 0],
+    ['老師名單列', summary.teacherRosterRowCount || 0],
+    ['薪資列', summary.teacherPayrollRowCount || 0],
+    ['學生分頁', summary.studentSheetCount || 0],
+    ['老師分頁', summary.teacherSheetCount || 0]
+  ].map(([label, value]) => `
+    <div class="summary-cell">
+      <strong>${formatMoney(value)}</strong>
+      <span>${escapeHtml(label)}</span>
+    </div>
+  `).join('');
+
+  elements.importSheetRows.innerHTML = (summary.sheets || []).length
+    ? summary.sheets.map((sheet) => `
+      <tr>
+        <td>${escapeHtml(sheet.sheet)}</td>
+        <td class="money">${formatMoney(sheet.studentCount)}</td>
+        <td class="money">${formatMoney(sheet.selectedCourseCount)}</td>
+        <td class="money">${formatMoney(sheet.tuitionEntryCount)}</td>
+        <td class="money">${formatMoney(sheet.rowsWithTuitionEntries)}</td>
+        <td>${escapeHtml(Object.entries(sheet.tuitionEntryKinds || {}).map(([key, value]) => `${key}:${value}`).join('、'))}</td>
+      </tr>
+    `).join('')
+    : emptyRow(6);
+
+  elements.importTeacherRows.innerHTML = (summary.teacherSheets || []).length
+    ? summary.teacherSheets.map((sheet) => `
+      <tr>
+        <td>${escapeHtml(sheet.sheet)}</td>
+        <td class="money">${formatMoney(sheet.rosterBlockCount)}</td>
+        <td class="money">${formatMoney(sheet.rosterRowCount)}</td>
+        <td class="money">${formatMoney(sheet.payrollBlockCount)}</td>
+        <td class="money">${formatMoney(sheet.payrollRowCount)}</td>
+      </tr>
+    `).join('')
+    : emptyRow(5);
+
+  const payrollBlocks = (snapshot.teacherSheets || []).flatMap((sheet) => sheet.payrollBlocks || []);
+  elements.importPayrollBlockRows.innerHTML = payrollBlocks.length
+    ? payrollBlocks.slice(0, 120).map((block) => `
+      <tr>
+        <td>${escapeHtml(block.sheet)}</td>
+        <td>${escapeHtml(block.title)}</td>
+        <td>${escapeHtml(block.startColumn)}</td>
+        <td class="money">${formatMoney(block.rowCount)}</td>
+      </tr>
+    `).join('')
+    : emptyRow(4);
+
+  const tuitionCountByStudent = new Map();
+  for (const entry of snapshot.tuitionEntries || []) {
+    tuitionCountByStudent.set(entry.studentId, (tuitionCountByStudent.get(entry.studentId) || 0) + 1);
+  }
+
+  const query = elements.importStudentSearch.value.trim().toLowerCase();
+  const students = (snapshot.students || []).filter((student) => {
+    if (!query) return true;
+    const profile = student.profile || {};
+    return [profile.name, profile.highSchool, profile.juniorHigh, student.sheet]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query));
+  }).slice(0, 80);
+
+  elements.importStudentRows.innerHTML = students.length
+    ? students.map((student) => {
+      const profile = student.profile || {};
+      return `
+        <tr>
+          <td>${escapeHtml(profile.name || '')}</td>
+          <td>${escapeHtml(student.sheet)}</td>
+          <td class="money">${student.row}</td>
+          <td>${escapeHtml(profile.highSchool || profile.juniorHigh || '')}</td>
+          <td class="money">${formatMoney((student.selectedCourses || []).length)}</td>
+          <td class="money">${formatMoney(tuitionCountByStudent.get(student.id) || 0)}</td>
+        </tr>
+      `;
+    }).join('')
+    : emptyRow(6);
+}
+
 function renderAll() {
   renderAllocationPreview();
   renderEvents();
   renderPayroll();
   renderRecords();
+  renderImport();
   saveState();
 }
 
@@ -304,6 +415,44 @@ document.querySelector('#exportTuitionCsv').addEventListener('click', () => {
   downloadFile('bearhigh-tuition-allocations.csv', toCsv(rows), 'text/csv;charset=utf-8');
 });
 
+document.querySelector('#loadLocalImport').addEventListener('click', async () => {
+  elements.importStatus.textContent = '載入中';
+  try {
+    const response = await fetch('./local-data/numbers_import_latest.json', { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    state.importSnapshot = await response.json();
+    renderAll();
+    setActiveTab('import');
+  } catch (error) {
+    elements.importStatus.textContent = '找不到本機快照';
+    elements.importSummary.innerHTML = `<div class="record-item"><p>${escapeHtml(error.message)}</p></div>`;
+  }
+});
+
+document.querySelector('#clearImport').addEventListener('click', () => {
+  state.importSnapshot = null;
+  renderAll();
+});
+
+document.querySelector('#exportImportedPayrollCsv').addEventListener('click', () => {
+  if (!state.importSnapshot) return;
+  const rows = [['分頁', '月份/區塊', '起始欄', '原始列', '欄位', '值']];
+  for (const teacherSheet of state.importSnapshot.teacherSheets || []) {
+    for (const block of teacherSheet.payrollBlocks || []) {
+      for (const row of block.rows || []) {
+        for (const cell of row.cells || []) {
+          rows.push([teacherSheet.summary?.sheet || block.sheet, block.title, block.startColumn, row.row, cell.column, cell.value]);
+        }
+      }
+    }
+  }
+  downloadFile('bearhigh-imported-teacher-payroll.csv', toCsv(rows), 'text/csv;charset=utf-8');
+});
+
+elements.importStudentSearch.addEventListener('input', renderImport);
+
 document.querySelector('#clearAll').addEventListener('click', () => {
   const button = document.querySelector('#clearAll');
   const now = Date.now();
@@ -321,6 +470,7 @@ document.querySelector('#clearAll').addEventListener('click', () => {
   state.tuitionPayments.splice(0);
   state.membershipEvents.splice(0);
   state.payrollRuns.splice(0);
+  state.importSnapshot = null;
   clearArmedUntil = 0;
   button.textContent = '清除本機草稿';
   renderAll();

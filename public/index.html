@@ -20,6 +20,7 @@
         <button class="tab is-active" data-tab="tuition" type="button">學費</button>
         <button class="tab" data-tab="events" type="button">異動</button>
         <button class="tab" data-tab="payroll" type="button">薪資</button>
+        <button class="tab" data-tab="import" type="button">匯入</button>
         <button class="tab" data-tab="records" type="button">紀錄</button>
       </nav>
 
@@ -207,6 +208,82 @@
               </tr>
             </thead>
             <tbody id="payrollRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="import">
+        <div class="record-toolbar">
+          <button class="primary" id="loadLocalImport" type="button">載入 Numbers 快照</button>
+          <button class="ghost" id="exportImportedPayrollCsv" type="button">匯出老師薪資 CSV</button>
+          <button class="ghost" id="clearImport" type="button">清除匯入快照</button>
+          <div class="status-pill" id="importStatus">尚未載入</div>
+        </div>
+
+        <section class="import-summary" id="importSummary"></section>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>分頁</th>
+                <th>學生列</th>
+                <th>課程勾選</th>
+                <th>學費欄位</th>
+                <th>有學費列</th>
+                <th>欄位類型</th>
+              </tr>
+            </thead>
+            <tbody id="importSheetRows"></tbody>
+          </table>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>老師分頁</th>
+                <th>名單區塊</th>
+                <th>名單列</th>
+                <th>薪資區塊</th>
+                <th>薪資列</th>
+              </tr>
+            </thead>
+            <tbody id="importTeacherRows"></tbody>
+          </table>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>薪資分頁</th>
+                <th>月份/區塊</th>
+                <th>起始欄</th>
+                <th>列數</th>
+              </tr>
+            </thead>
+            <tbody id="importPayrollBlockRows"></tbody>
+          </table>
+        </div>
+
+        <div class="import-filter">
+          <input id="importStudentSearch" autocomplete="off" placeholder="搜尋學生、學校、分頁">
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>學生</th>
+                <th>分頁</th>
+                <th>列</th>
+                <th>學校</th>
+                <th>課程勾選</th>
+                <th>學費欄位</th>
+              </tr>
+            </thead>
+            <tbody id="importStudentRows"></tbody>
           </table>
         </div>
       </section>

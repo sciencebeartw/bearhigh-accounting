@@ -1,7 +1,9 @@
 data/snapshots/*
 data/reports/*
+public/local-data/*
 !data/snapshots/.gitkeep
 !data/reports/.gitkeep
+!public/local-data/.gitkeep
 *.xlsx
 *.numbers
 *.csv
@@ -10,4 +12,3 @@ __pycache__/
 .DS_Store
 .env
 firebase-debug.log
-
