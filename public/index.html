@@ -25,6 +25,7 @@
         <button class="tab is-active" data-tab="tuition" type="button">學費</button>
         <button class="tab" data-tab="events" type="button">異動</button>
         <button class="tab" data-tab="payroll" type="button">薪資</button>
+        <button class="tab" data-tab="students" type="button">學生</button>
         <button class="tab" data-tab="import" type="button">匯入</button>
         <button class="tab" data-tab="records" type="button">紀錄</button>
       </nav>
@@ -34,6 +35,12 @@
           <label>
             <span>學生</span>
             <input name="studentName" autocomplete="off" required>
+          </label>
+          <label>
+            <span>學生識別</span>
+            <select name="studentId" id="tuitionStudentId">
+              <option value="">未綁定匯入資料</option>
+            </select>
           </label>
           <label>
             <span>年級 / cohort</span>
@@ -134,6 +141,12 @@
             <input name="studentName" required autocomplete="off">
           </label>
           <label>
+            <span>學生識別</span>
+            <select name="studentId" id="eventStudentId">
+              <option value="">未綁定匯入資料</option>
+            </select>
+          </label>
+          <label>
             <span>異動</span>
             <select name="action">
               <option value="加入">加入</option>
@@ -217,6 +230,71 @@
         </div>
       </section>
 
+      <section class="panel" data-panel="students">
+        <div class="record-toolbar">
+          <button class="ghost" id="exportStudentFilterCsv" type="button">匯出目前學生名單 CSV</button>
+        </div>
+
+        <section class="import-summary" id="studentDashboardSummary"></section>
+
+        <div class="filter-grid">
+          <label>
+            <span>關鍵字</span>
+            <input id="studentKeyword" autocomplete="off" placeholder="學生、學校、分頁、課程">
+          </label>
+          <label>
+            <span>分頁 / cohort</span>
+            <select id="studentSheetFilter">
+              <option value="">全部</option>
+            </select>
+          </label>
+          <label>
+            <span>班級 / 課程</span>
+            <select id="studentCourseFilter">
+              <option value="">全部</option>
+            </select>
+          </label>
+          <label>
+            <span>繳費狀態</span>
+            <select id="studentPaymentFilter">
+              <option value="">全部</option>
+              <option value="paid">有繳費日期</option>
+              <option value="tuition_no_payment">有學費但未見繳費日期</option>
+              <option value="refund">有退費</option>
+              <option value="no_tuition">無學費資料</option>
+            </select>
+          </label>
+          <label class="checkbox-line">
+            <input id="studentDuplicateOnly" type="checkbox">
+            <span>只看同名風險</span>
+          </label>
+        </div>
+
+        <div class="split-view">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>學生</th>
+                  <th>分頁</th>
+                  <th>列</th>
+                  <th>學校</th>
+                  <th>課程</th>
+                  <th>學費欄位</th>
+                  <th>狀態</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="studentCenterRows"></tbody>
+            </table>
+          </div>
+
+          <aside class="detail-panel" id="studentDetail">
+            <p class="empty">選一位學生查看課程、學費與異動紀錄</p>
+          </aside>
+        </div>
+      </section>
+
       <section class="panel" data-panel="import">
         <div class="record-toolbar">
           <button class="primary" id="loadCloudImport" type="button" disabled>載入雲端資料</button>
@@ -275,7 +353,26 @@
         </div>
 
         <div class="import-filter">
-          <input id="importStudentSearch" autocomplete="off" placeholder="搜尋學生、學校、分頁">
+          <input id="importPayrollSearch" autocomplete="off" placeholder="搜尋老師薪資列、月份、課程、欄位值">
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>薪資分頁</th>
+                <th>月份/區塊</th>
+                <th>原始列</th>
+                <th>摘要</th>
+                <th>欄位值</th>
+              </tr>
+            </thead>
+            <tbody id="importPayrollRows"></tbody>
+          </table>
+        </div>
+
+        <div class="import-filter">
+          <input id="importStudentSearch" autocomplete="off" placeholder="搜尋學生、學校、分頁、課程、學費欄位">
         </div>
 
         <div class="table-wrap">

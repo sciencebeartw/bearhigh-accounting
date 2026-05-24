@@ -346,6 +346,146 @@ td.money {
   max-width: 360px;
 }
 
+.filter-grid {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-bottom: 18px;
+  padding: 14px;
+}
+
+.checkbox-line {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  padding-top: 24px;
+}
+
+.checkbox-line input {
+  min-height: auto;
+  width: auto;
+}
+
+.checkbox-line span {
+  margin: 0;
+}
+
+.split-view {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+}
+
+.split-view .table-wrap {
+  margin-top: 0;
+}
+
+.detail-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  max-height: calc(100vh - 160px);
+  overflow: auto;
+  padding: 16px;
+  position: sticky;
+  top: 112px;
+}
+
+.detail-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.detail-meta {
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+
+.detail-meta span,
+.tag {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 9px;
+}
+
+.detail-section {
+  border-top: 1px solid var(--line);
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.detail-section h3 {
+  font-size: 0.95rem;
+  margin: 0 0 10px;
+}
+
+.tag-list,
+.mini-list {
+  display: grid;
+  gap: 8px;
+}
+
+.tag-list {
+  align-items: start;
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.mini-row {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 0.65fr 1.2fr 1fr;
+  padding: 9px;
+}
+
+.mini-row span {
+  color: var(--muted);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.muted {
+  color: var(--muted);
+  margin: 0;
+}
+
+.risk {
+  background: #fff4df !important;
+  border-color: #ecc47d !important;
+  color: #7d4a00 !important;
+  font-weight: 800;
+}
+
+.inline-risk {
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 0.78rem;
+  margin-left: 6px;
+  padding: 3px 7px;
+}
+
+tr.is-selected td {
+  background: #f4faf6;
+}
+
+.small {
+  min-height: 32px;
+  padding: 5px 9px;
+}
+
 .record-grid {
   display: grid;
   gap: 18px;
@@ -377,7 +517,18 @@ td.money {
 
 @media (max-width: 860px) {
   .form-grid,
-  .record-grid {
+  .filter-grid,
+  .record-grid,
+  .split-view {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-panel {
+    max-height: none;
+    position: static;
+  }
+
+  .mini-row {
     grid-template-columns: 1fr;
   }
 
