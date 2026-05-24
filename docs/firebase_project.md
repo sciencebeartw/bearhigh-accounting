@@ -77,6 +77,8 @@ https://www.sciencebear.com.tw/bearhigh-accounting/
 
 Google 登入提供者已啟用，支援電子郵件為 `neatnelsonhuang@gmail.com`。
 
+`public/js/firebase-config.mjs` 是部署產物，不納入 Git。GitHub Actions 使用 repo Actions variable `BEARHIGH_FIREBASE_API_KEY` 產生 Firebase Web SDK config，避免 GitHub secret scanning 把公開 Web API key 當作 commit 內的可能 secret。
+
 已授權 OAuth 重新導向網域：
 
 ```text

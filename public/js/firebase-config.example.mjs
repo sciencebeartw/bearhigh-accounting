@@ -1,5 +1,5 @@
 export const firebaseConfig = {
-  apiKey: 'AIzaSyDdQWMApzMeYTz-9phc7xsfAaWWXZy_9Nw',
+  apiKey: 'YOUR_FIREBASE_WEB_API_KEY',
   authDomain: 'bearhigh.firebaseapp.com',
   databaseURL: 'https://bearhigh-default-rtdb.asia-southeast1.firebasedatabase.app',
   projectId: 'bearhigh',

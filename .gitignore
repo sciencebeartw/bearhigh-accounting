@@ -1,6 +1,7 @@
 data/snapshots/*
 data/reports/*
 public/local-data/*
+public/js/firebase-config.mjs
 !data/snapshots/.gitkeep
 !data/reports/.gitkeep
 !public/local-data/.gitkeep

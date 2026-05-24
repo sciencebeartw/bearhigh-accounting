@@ -28,6 +28,23 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
+      - name: Write Firebase config
+        env:
+          BEARHIGH_FIREBASE_API_KEY: ${{ vars.BEARHIGH_FIREBASE_API_KEY }}
+        run: |
+          test -n "$BEARHIGH_FIREBASE_API_KEY"
+          cat > public/js/firebase-config.mjs <<EOF
+          export const firebaseConfig = {
+            apiKey: '${BEARHIGH_FIREBASE_API_KEY}',
+            authDomain: 'bearhigh.firebaseapp.com',
+            databaseURL: 'https://bearhigh-default-rtdb.asia-southeast1.firebasedatabase.app',
+            projectId: 'bearhigh',
+            storageBucket: 'bearhigh.firebasestorage.app',
+            messagingSenderId: '1035765660629',
+            appId: '1:1035765660629:web:2eb7b64579decc05b61b5c'
+          };
+          EOF
+
       - name: Upload static app
         uses: actions/upload-pages-artifact@v3
         with:

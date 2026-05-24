@@ -33,6 +33,7 @@ Firebase 專案也獨立使用 `bearhigh`，避免開發期與 `sciencebear-admi
 - 未登入時仍可用本機 `localStorage` 草稿。
 - 登入 `neatnelsonhuang@gmail.com` 後可讀取雲端匯入快照。
 - 線上新增的學費、異動、薪資草表會同步到 `accounting/manual/*`。
+- `public/js/firebase-config.mjs` 不納入 Git；GitHub Pages 由 Actions 變數 `BEARHIGH_FIREBASE_API_KEY` 在部署時產生。
 
 ```bash
 npm test
@@ -87,6 +88,7 @@ python3 src/import/build_firebase_import.py \
 - 真實學生資料、電話、學費資料不得 commit。
 - `data/snapshots/` 與 `data/reports/` 預設不納入 Git。
 - Firebase 寫入只開 `accounting` 節點，並由 Google Auth email allowlist 保護。
+- Firebase Web API key 是前端初始化用公開設定，不是 service account；repo 不直接 commit 實值以避免 GitHub secret scanning 告警。
 
 ## 參考來源
 
