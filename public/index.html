@@ -12,7 +12,12 @@
         <p class="eyebrow">BearHigh</p>
         <h1>高中帳務工作台</h1>
       </div>
-      <div class="status-pill" id="storageStatus">本機草稿</div>
+      <div class="topbar-actions">
+        <div class="status-pill" id="authStatus">尚未登入</div>
+        <div class="status-pill" id="storageStatus">本機草稿</div>
+        <button class="ghost" id="signInGoogle" type="button">Google 登入</button>
+        <button class="ghost" id="signOutGoogle" type="button" hidden>登出</button>
+      </div>
     </header>
 
     <main class="workspace">
@@ -214,10 +219,12 @@
 
       <section class="panel" data-panel="import">
         <div class="record-toolbar">
+          <button class="primary" id="loadCloudImport" type="button" disabled>載入雲端資料</button>
           <button class="primary" id="loadLocalImport" type="button">載入 Numbers 快照</button>
           <button class="ghost" id="exportImportedPayrollCsv" type="button">匯出老師薪資 CSV</button>
           <button class="ghost" id="clearImport" type="button">清除匯入快照</button>
           <div class="status-pill" id="importStatus">尚未載入</div>
+          <div class="status-pill" id="cloudStatus">雲端未連線</div>
         </div>
 
         <section class="import-summary" id="importSummary"></section>

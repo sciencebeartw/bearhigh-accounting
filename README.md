@@ -28,7 +28,11 @@ Firebase 專案也獨立使用 `bearhigh`，避免開發期與 `sciencebear-admi
 - 老師薪資草表：可先用堂數、鐘點與調整金額產生小計。
 - 匯出：本機草稿 JSON 與學費分攤 CSV。
 
-目前資料只存在瀏覽器 `localStorage`，尚未寫入 Firebase。
+目前已接上 Firebase Google Auth 與 `bearhigh` RTDB：
+
+- 未登入時仍可用本機 `localStorage` 草稿。
+- 登入 `neatnelsonhuang@gmail.com` 後可讀取雲端匯入快照。
+- 線上新增的學費、異動、薪資草表會同步到 `accounting/manual/*`。
 
 ```bash
 npm test
@@ -41,7 +45,11 @@ npm run start
 http://127.0.0.1:4173
 ```
 
-前端網址預期走 GitHub Pages；`bearhigh` 只作資料庫 / Auth。正式線上測前需先建立 GitHub repository 與 Pages 設定。
+前端網址走 GitHub Pages；`bearhigh` 只作資料庫 / Auth。
+
+```text
+https://www.sciencebear.com.tw/bearhigh-accounting/
+```
 
 ## Numbers 本機匯入
 
@@ -56,6 +64,17 @@ python3 src/import/extract_workbook.py \
 
 `public/local-data/numbers_import_latest.json` 會包含真實學生與帳務資料，已被 `.gitignore` 排除，不得 commit。開本機工作台後，到「匯入」頁籤可載入這份快照。
 
+若要產生 Firebase 匯入 payload：
+
+```bash
+python3 src/import/build_firebase_import.py \
+  --input public/local-data/numbers_import_latest.json \
+  --output data/snapshots/firebase_import_update.json \
+  --batch-id numbers-20260524-0105
+```
+
+`data/snapshots/firebase_import_update.json` 同樣包含真實資料，已被 `.gitignore` 排除，不得 commit。
+
 目前匯入範圍：
 
 - 學生/學費分頁：學生基本資料、課程勾選、學收、抵扣/抵用、繳費日期、退費、備註。
@@ -67,7 +86,7 @@ python3 src/import/extract_workbook.py \
 - 每次匯入先建立快照，再跑 dry-run。
 - 真實學生資料、電話、學費資料不得 commit。
 - `data/snapshots/` 與 `data/reports/` 預設不納入 Git。
-- Firebase 寫入必須等 dry-run 對照通過後另案開啟。
+- Firebase 寫入只開 `accounting` 節點，並由 Google Auth email allowlist 保護。
 
 ## 參考來源
 
@@ -82,4 +101,4 @@ python3 src/import/extract_workbook.py \
 - Web App：`BearHigh Accounting`
 - Realtime Database：`bearhigh-default-rtdb`
 - Location：`asia-southeast1`
-- 開發期 rules：預設全部拒絕讀寫，等 Auth / admin model 決定後再開節點。
+- Rules：根節點拒絕；`accounting` 只允許 `neatnelsonhuang@gmail.com` 登入後讀寫。

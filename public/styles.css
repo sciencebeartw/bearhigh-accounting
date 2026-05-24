@@ -48,6 +48,14 @@ button:disabled {
   z-index: 10;
 }
 
+.topbar-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .eyebrow {
   color: var(--accent);
   font-size: 0.78rem;
@@ -376,6 +384,11 @@ td.money {
   .topbar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .topbar-actions {
+    justify-content: flex-start;
+    width: 100%;
   }
 
   .result-band {

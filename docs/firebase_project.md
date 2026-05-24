@@ -32,29 +32,56 @@ bearhigh/highPublic             新測試
 
 ## Rules
 
-目前 `database.rules.json` 採用 fail-closed：
+目前 `database.rules.json` 採用 root fail-closed，只開高中帳務 `accounting`：
 
 ```json
 {
   "rules": {
     ".read": false,
-    ".write": false
+    ".write": false,
+    "accounting": {
+      ".read": "auth != null && auth.token.email == 'neatnelsonhuang@gmail.com'",
+      ".write": "auth != null && auth.token.email == 'neatnelsonhuang@gmail.com'"
+    }
   }
 }
 ```
 
-後續開 UI 前需先決定 Auth / admin allowlist：
+目前 allowlist：
 
-- 只允許指定管理員登入。
-- 帳務、薪資節點不得公開讀取。
-- import batch 寫入必須帶 `importBatchId` 與使用者資訊。
+- `neatnelsonhuang@gmail.com`
+
+帳務、薪資節點不得公開讀取；未登入 REST 讀取 `/accounting/currentImportBatchId.json` 已確認回 `401 Permission denied`。
+
+目前雲端資料節點：
+
+```text
+accounting/currentImportBatchId
+accounting/importBatches/{batchId}
+accounting/manual/tuitionPayments/{recordId}
+accounting/manual/membershipEvents/{recordId}
+accounting/manual/payrollRuns/{recordId}
+```
 
 ## 前端部署
 
-前端網址預期走 GitHub Pages，不走 Firebase Hosting。
+前端網址走 GitHub Pages，不走 Firebase Hosting：
 
-`bearhigh` 只作高中帳務資料庫 / Auth / 未來後端資料層。第一版工作台仍是 localStorage 草稿版，正式上線測試前需確認：
+```text
+https://www.sciencebear.com.tw/bearhigh-accounting/
+```
 
-- 是否接受先用 GitHub Pages 部署純前端草稿版。
-- 是否要先加 Firebase Auth。
-- 是否要在 rules 開啟任何節點。
+`bearhigh` 只作高中帳務資料庫 / Auth / 未來後端資料層。GitHub Pages 只部署程式碼，不部署 `public/local-data/numbers_import_latest.json`。
+
+## Auth
+
+Google 登入提供者已啟用，支援電子郵件為 `neatnelsonhuang@gmail.com`。
+
+已授權 OAuth 重新導向網域：
+
+```text
+localhost
+bearhigh.firebaseapp.com
+bearhigh.web.app
+www.sciencebear.com.tw
+```

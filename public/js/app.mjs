@@ -1,3 +1,19 @@
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
+import {
+  getAuth,
+  getRedirectResult,
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  signInWithRedirect,
+  signOut
+} from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
+import {
+  get,
+  getDatabase,
+  ref,
+  set
+} from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js';
+import { firebaseConfig } from './firebase-config.mjs';
 import {
   COURSE_CATALOG,
   PRICING_RULES,
@@ -6,8 +22,14 @@ import {
 } from './pricing.mjs';
 
 const storageKey = 'bearhigh.accounting.v1';
+const accountingRoot = 'accounting';
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const database = getDatabase(firebaseApp);
+const googleProvider = new GoogleAuthProvider();
 const state = loadState();
 let clearArmedUntil = 0;
+let currentUser = null;
 
 state.tuitionPayments ||= [];
 state.membershipEvents ||= [];
@@ -37,6 +59,11 @@ const elements = {
   importPayrollBlockRows: document.querySelector('#importPayrollBlockRows'),
   importStudentRows: document.querySelector('#importStudentRows'),
   importStudentSearch: document.querySelector('#importStudentSearch'),
+  authStatus: document.querySelector('#authStatus'),
+  cloudStatus: document.querySelector('#cloudStatus'),
+  signInGoogle: document.querySelector('#signInGoogle'),
+  signOutGoogle: document.querySelector('#signOutGoogle'),
+  loadCloudImport: document.querySelector('#loadCloudImport'),
   saveTuition: document.querySelector('#saveTuition'),
   storageStatus: document.querySelector('#storageStatus')
 };
@@ -60,7 +87,13 @@ function loadState() {
 }
 
 function saveState() {
-  localStorage.setItem(storageKey, JSON.stringify(state));
+  const persistedState = {
+    tuitionPayments: state.tuitionPayments,
+    membershipEvents: state.membershipEvents,
+    payrollRuns: state.payrollRuns,
+    importSnapshot: null
+  };
+  localStorage.setItem(storageKey, JSON.stringify(persistedState));
   elements.storageStatus.textContent = `本機草稿 ${state.tuitionPayments.length + state.membershipEvents.length + state.payrollRuns.length} 筆`;
 }
 
@@ -130,6 +163,58 @@ function emptyRow(colspan) {
 
 function nowId(prefix) {
   return `${prefix}_${new Date().toISOString().replace(/[-:.TZ]/g, '')}_${Math.random().toString(16).slice(2, 7)}`;
+}
+
+function accountingRef(path = '') {
+  return ref(database, path ? `${accountingRoot}/${path}` : accountingRoot);
+}
+
+function setCloudStatus(message) {
+  elements.cloudStatus.textContent = message;
+}
+
+function renderAuth(user) {
+  currentUser = user;
+  const email = user?.email || '';
+  elements.authStatus.textContent = email || '尚未登入';
+  elements.signInGoogle.hidden = !!user;
+  elements.signOutGoogle.hidden = !user;
+  elements.loadCloudImport.disabled = !user;
+  setCloudStatus(user ? '雲端已連線' : '雲端未連線');
+}
+
+async function loadCloudImportSnapshot() {
+  if (!currentUser) {
+    setCloudStatus('請先登入');
+    return;
+  }
+  setCloudStatus('讀取雲端中');
+  const currentBatch = await get(accountingRef('currentImportBatchId'));
+  const batchId = currentBatch.val();
+  if (!batchId) {
+    setCloudStatus('尚無雲端匯入');
+    return;
+  }
+  const snapshot = await get(accountingRef(`importBatches/${batchId}`));
+  if (!snapshot.exists()) {
+    setCloudStatus('找不到雲端批次');
+    return;
+  }
+  state.importSnapshot = snapshot.val();
+  renderAll();
+  setActiveTab('import');
+  setCloudStatus(`已載入 ${batchId}`);
+}
+
+async function saveCloudRecord(kind, record) {
+  if (!currentUser) return;
+  const payload = {
+    ...record,
+    syncedAt: new Date().toISOString(),
+    syncedBy: currentUser.email || currentUser.uid
+  };
+  await set(accountingRef(`manual/${kind}/${record.id}`), payload);
+  setCloudStatus('雲端已同步');
 }
 
 function renderEvents() {
@@ -321,7 +406,7 @@ elements.tabs.forEach((tab) => {
 elements.tuitionForm.addEventListener('input', renderAllocationPreview);
 elements.tuitionForm.addEventListener('change', renderAllocationPreview);
 
-elements.tuitionForm.addEventListener('submit', (event) => {
+elements.tuitionForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const data = getFormData(elements.tuitionForm);
   const allocation = calculateTuitionAllocation(data);
@@ -330,17 +415,23 @@ elements.tuitionForm.addEventListener('submit', (event) => {
     return;
   }
 
-  state.tuitionPayments.push({
+  const record = {
     id: nowId('tuition'),
     createdAt: new Date().toISOString(),
     ...data,
     courseNames: allocation.rows.map((row) => row.courseName),
     allocation
-  });
+  };
+  state.tuitionPayments.push(record);
 
   elements.tuitionForm.reset();
   elements.pricingVersion.value = 'current_21600_24';
   renderAll();
+  try {
+    await saveCloudRecord('tuitionPayments', record);
+  } catch (error) {
+    setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
+  }
 });
 
 document.querySelector('#clearTuitionForm').addEventListener('click', () => {
@@ -349,26 +440,32 @@ document.querySelector('#clearTuitionForm').addEventListener('click', () => {
   renderAllocationPreview();
 });
 
-elements.eventForm.addEventListener('submit', (event) => {
+elements.eventForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const data = Object.fromEntries(new FormData(elements.eventForm).entries());
-  state.membershipEvents.push({
+  const record = {
     id: nowId('event'),
     createdAt: new Date().toISOString(),
     ...data
-  });
+  };
+  state.membershipEvents.push(record);
   elements.eventForm.reset();
   renderAll();
+  try {
+    await saveCloudRecord('membershipEvents', record);
+  } catch (error) {
+    setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
+  }
 });
 
-elements.payrollForm.addEventListener('submit', (event) => {
+elements.payrollForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const data = Object.fromEntries(new FormData(elements.payrollForm).entries());
   const sessionCount = Number(data.sessionCount || 0);
   const rate = Number(String(data.rate || '0').replace(/,/g, ''));
   const adjustment = Number(String(data.adjustment || '0').replace(/,/g, ''));
 
-  state.payrollRuns.push({
+  const record = {
     id: nowId('payroll'),
     createdAt: new Date().toISOString(),
     ...data,
@@ -376,9 +473,15 @@ elements.payrollForm.addEventListener('submit', (event) => {
     rate,
     adjustment,
     total: Math.round(sessionCount * rate + adjustment)
-  });
+  };
+  state.payrollRuns.push(record);
   elements.payrollForm.reset();
   renderAll();
+  try {
+    await saveCloudRecord('payrollRuns', record);
+  } catch (error) {
+    setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
+  }
 });
 
 document.querySelector('#exportJson').addEventListener('click', () => {
@@ -431,6 +534,12 @@ document.querySelector('#loadLocalImport').addEventListener('click', async () =>
   }
 });
 
+elements.loadCloudImport.addEventListener('click', () => {
+  loadCloudImportSnapshot().catch((error) => {
+    setCloudStatus(`雲端讀取失敗：${error.code || error.message}`);
+  });
+});
+
 document.querySelector('#clearImport').addEventListener('click', () => {
   state.importSnapshot = null;
   renderAll();
@@ -474,6 +583,28 @@ document.querySelector('#clearAll').addEventListener('click', () => {
   clearArmedUntil = 0;
   button.textContent = '清除本機草稿';
   renderAll();
+});
+
+elements.signInGoogle.addEventListener('click', () => {
+  setCloudStatus('前往 Google 登入');
+  signInWithRedirect(auth, googleProvider);
+});
+
+elements.signOutGoogle.addEventListener('click', async () => {
+  await signOut(auth);
+});
+
+getRedirectResult(auth).catch((error) => {
+  setCloudStatus(`登入失敗：${error.code || error.message}`);
+});
+
+onAuthStateChanged(auth, (user) => {
+  renderAuth(user);
+  if (user) {
+    loadCloudImportSnapshot().catch((error) => {
+      setCloudStatus(`雲端讀取失敗：${error.code || error.message}`);
+    });
+  }
 });
 
 renderOptions();

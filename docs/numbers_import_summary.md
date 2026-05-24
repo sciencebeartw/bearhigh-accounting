@@ -13,6 +13,21 @@ python3 src/import/extract_workbook.py \
 
 完整輸出 `public/local-data/numbers_import_latest.json` 含真實學生與帳務資料，已被 `.gitignore` 排除，不得 commit。
 
+Firebase 匯入批次：
+
+```text
+numbers-20260524-0105
+```
+
+已寫入 `bearhigh` RTDB：
+
+```text
+accounting/importBatches/numbers-20260524-0105
+accounting/currentImportBatchId
+```
+
+公開 GitHub Pages 不部署 `public/local-data/numbers_import_latest.json`；線上版登入後改從 RTDB 讀取。
+
 ## 目前匯入結果
 
 | 類型 | 數量 |
@@ -47,6 +62,6 @@ python3 src/import/extract_workbook.py \
 | 社會師資-蔣明 | 1 | 7 | 11 | 66 |
 | 國文師資 | 0 | 0 | 11 | 140 |
 
-## 還不是最終匯入
+## 還不是最終格式
 
-目前是 raw normalized snapshot，適合本機看資料形狀與核對欄位；尚未把老師薪資列轉成正式 payroll run，也尚未寫入 `bearhigh`。
+目前是 raw normalized snapshot，適合線上看資料形狀與核對欄位；尚未把老師薪資列轉成正式 payroll run / Excel 匯出格式。
