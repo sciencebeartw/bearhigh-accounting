@@ -20,6 +20,11 @@ import {
   calculateTuitionAllocation,
   formatMoney
 } from './pricing.mjs';
+import {
+  effectiveSessionsForEvents,
+  parseCourseSessionDates,
+  sessionDatesToText
+} from './sessions.mjs';
 
 const storageKey = 'bearhigh.accounting.v1';
 const accountingRoot = 'accounting';
@@ -32,12 +37,14 @@ let clearArmedUntil = 0;
 let currentUser = null;
 let selectedStudentId = null;
 let payrollPreview = null;
+let sessionPlanEditorKey = '';
 
 state.tuitionPayments ||= [];
 state.membershipEvents ||= [];
 state.payrollRuns ||= [];
 state.studentProfiles ||= {};
 state.studentNotes ||= [];
+state.courseSessionPlans ||= {};
 state.importSnapshot ||= null;
 
 const elements = {
@@ -56,7 +63,10 @@ const elements = {
   payrollPreviewRows: document.querySelector('#payrollPreviewRows'),
   payrollPreviewSummary: document.querySelector('#payrollPreviewSummary'),
   payrollRosterBlock: document.querySelector('#payrollRosterBlock'),
+  payrollSessionDates: document.querySelector('#payrollSessionDates'),
+  payrollSessionSummary: document.querySelector('#payrollSessionSummary'),
   previewPayrollRun: document.querySelector('#previewPayrollRun'),
+  savePayrollSessionPlan: document.querySelector('#savePayrollSessionPlan'),
   savePayrollPreview: document.querySelector('#savePayrollPreview'),
   exportPayrollPreviewCsv: document.querySelector('#exportPayrollPreviewCsv'),
   exportPayrollPreviewXls: document.querySelector('#exportPayrollPreviewXls'),
@@ -126,10 +136,11 @@ function saveState() {
     payrollRuns: state.payrollRuns,
     studentProfiles: state.studentProfiles,
     studentNotes: state.studentNotes,
+    courseSessionPlans: state.courseSessionPlans,
     importSnapshot: null
   };
   localStorage.setItem(storageKey, JSON.stringify(persistedState));
-  const draftCount = state.tuitionPayments.length + state.membershipEvents.length + state.payrollRuns.length + state.studentNotes.length;
+  const draftCount = state.tuitionPayments.length + state.membershipEvents.length + state.payrollRuns.length + state.studentNotes.length + Object.keys(state.courseSessionPlans).length;
   elements.storageStatus.textContent = `本機草稿 ${draftCount} 筆`;
 }
 
@@ -765,6 +776,50 @@ function selectedPayrollRosterBlock() {
   return getTeacherRosterBlocks().find((block) => block.key === key) || null;
 }
 
+function payrollSessionPlanKey(rosterKey, month) {
+  if (!rosterKey || !month) return '';
+  return `${month}::${rosterKey}`;
+}
+
+function selectedPayrollSessionPlanKey() {
+  return payrollSessionPlanKey(elements.payrollRosterBlock.value, elements.payrollCalcMonth.value);
+}
+
+function currentPayrollSessionRows() {
+  return parseCourseSessionDates(elements.payrollSessionDates.value);
+}
+
+function updatePayrollSessionSummary() {
+  const key = selectedPayrollSessionPlanKey();
+  const sessions = currentPayrollSessionRows();
+  const expectedSessions = Math.max(0, Math.round(parseNumber(elements.payrollCalcSessions.value)));
+  elements.savePayrollSessionPlan.disabled = !key || sessions.length === 0;
+  if (!key) {
+    elements.payrollSessionSummary.textContent = '選擇老師名單區塊與月份後，可儲存本月堂次日期。';
+    return;
+  }
+  if (!sessions.length) {
+    elements.payrollSessionSummary.textContent = '尚未設定堂次日期；異動仍可用手填第幾堂計算。';
+    return;
+  }
+  const firstDate = sessions[0]?.date || '';
+  const lastDate = sessions[sessions.length - 1]?.date || '';
+  const countWarning = expectedSessions && sessions.length !== expectedSessions ? `，與本月堂數 ${expectedSessions} 不同` : '';
+  elements.payrollSessionSummary.textContent = `已輸入 ${formatMoney(sessions.length)} 堂：${firstDate} 到 ${lastDate}${countWarning}`;
+}
+
+function syncPayrollSessionPlanEditor(force = false) {
+  const key = selectedPayrollSessionPlanKey();
+  if (!force && key === sessionPlanEditorKey) {
+    updatePayrollSessionSummary();
+    return;
+  }
+  sessionPlanEditorKey = key;
+  const plan = key ? state.courseSessionPlans[key] : null;
+  elements.payrollSessionDates.value = plan ? sessionDatesToText(plan.sessions || []) : '';
+  updatePayrollSessionSummary();
+}
+
 function payrollEventsForStudent(studentNameValue, courseName, month) {
   return state.membershipEvents
     .filter((event) => {
@@ -775,28 +830,13 @@ function payrollEventsForStudent(studentNameValue, courseName, month) {
     .sort((a, b) => `${a.date}-${a.sessionNo}`.localeCompare(`${b.date}-${b.sessionNo}`));
 }
 
-function effectiveSessionsForEvents(defaultSessions, events) {
-  let sessions = defaultSessions;
-  const notes = [];
-  for (const event of events) {
-    const sessionNo = Math.max(1, Math.round(parseNumber(event.sessionNo)));
-    if (event.action === '退出') {
-      sessions = Math.min(sessions, Math.max(0, sessionNo - 1));
-      notes.push(`${event.date || ''} 退出第 ${sessionNo} 堂`);
-    } else if (event.action === '加入') {
-      sessions = Math.min(sessions, Math.max(0, defaultSessions - sessionNo + 1));
-      notes.push(`${event.date || ''} 加入第 ${sessionNo} 堂`);
-    }
-  }
-  return { sessions, note: notes.join('；') };
-}
-
 function buildPayrollPreview() {
   const block = selectedPayrollRosterBlock();
   if (!block) return null;
 
   const month = elements.payrollCalcMonth.value;
   const sessionCount = Math.max(0, Math.round(parseNumber(elements.payrollCalcSessions.value)));
+  const sessionRows = currentPayrollSessionRows();
   const sharePercent = Math.max(0, parseNumber(elements.payrollCalcShare.value));
   const fixedRate = Math.max(0, parseNumber(elements.payrollCalcFixedRate.value));
   const adjustment = parseNumber(elements.payrollCalcAdjustment.value);
@@ -806,7 +846,7 @@ function buildPayrollPreview() {
     const name = fields['姓名'] || '';
     const singleRevenue = parseNumber(fields['單堂']);
     const events = payrollEventsForStudent(name, courseName, month);
-    const effective = effectiveSessionsForEvents(sessionCount, events);
+    const effective = effectiveSessionsForEvents(sessionCount, events, sessionRows);
     const revenue = Math.round(singleRevenue * effective.sessions);
     return {
       studentName: name,
@@ -830,6 +870,7 @@ function buildPayrollPreview() {
     rosterKey: block.key,
     rosterSheet: block.teacherSheet,
     sessionCount,
+    sessionDates: sessionRows,
     sharePercent,
     fixedRate,
     adjustment,
@@ -843,6 +884,7 @@ function buildPayrollPreview() {
 
 function renderPayrollPreview() {
   syncPayrollRosterOptions();
+  syncPayrollSessionPlanEditor();
   if (!payrollPreview) {
     elements.payrollPreviewSummary.innerHTML = '<div class="record-item"><p>尚未產生薪資試算</p></div>';
     elements.payrollPreviewRows.innerHTML = emptyRow(6);
@@ -886,6 +928,9 @@ function payrollMethodLabel(preview) {
 
 function buildPayrollXls(preview) {
   const generatedAt = new Date().toLocaleString('zh-TW', { hour12: false });
+  const sessionDateText = (preview.sessionDates || [])
+    .map((session) => `第 ${session.sessionNo} 堂 ${session.date}`)
+    .join(' / ');
   const detailRows = preview.rows.map((row, index) => `
     <tr>
       <td>${index + 1}</td>
@@ -919,6 +964,7 @@ function buildPayrollXls(preview) {
     <tr><td colspan="7"></td></tr>
     <tr class="meta"><th>月份</th><td>${escapeHtml(preview.month || '')}</td><th>老師</th><td>${escapeHtml(preview.teacherName)}</td><th>班級 / 課程</th><td colspan="2">${escapeHtml(preview.courseName)}</td></tr>
     <tr class="meta"><th>計算方式</th><td>${escapeHtml(payrollMethodLabel(preview))}</td><th>本月堂數</th><td class="money">${formatMoney(preview.sessionCount)}</td><th>名單來源</th><td colspan="2">${escapeHtml(preview.rosterSheet || '')}</td></tr>
+    <tr class="meta"><th>堂次日期</th><td colspan="6">${escapeHtml(sessionDateText || '未設定')}</td></tr>
     <tr class="meta"><th>學生收入合計</th><td class="money">${formatMoney(preview.revenueTotal)}</td><th>老師基礎薪資</th><td class="money">${formatMoney(preview.teacherBase)}</td><th>調整</th><td class="money">${formatMoney(preview.adjustment)}</td><td></td></tr>
     <tr class="meta"><th>老師小計</th><td class="money">${formatMoney(preview.total)}</td><th>備註</th><td colspan="4">${escapeHtml(preview.note || '')}</td></tr>
     <tr><td colspan="7">產生時間：${escapeHtml(generatedAt)}</td></tr>
@@ -1003,6 +1049,14 @@ async function loadCloudManualRecords() {
   state.membershipEvents = mergeRecordsById(state.membershipEvents, Object.values(manual.membershipEvents || {}));
   state.payrollRuns = mergeRecordsById(state.payrollRuns, Object.values(manual.payrollRuns || {}));
   state.studentNotes = mergeRecordsById(state.studentNotes, Object.values(manual.studentNotes || {}));
+  const remoteSessionPlans = {};
+  for (const plan of Object.values(manual.courseSessionPlans || {})) {
+    if (plan?.id) remoteSessionPlans[plan.id] = plan;
+  }
+  state.courseSessionPlans = {
+    ...state.courseSessionPlans,
+    ...remoteSessionPlans
+  };
 
   const remoteProfiles = {};
   for (const profile of Object.values(manual.studentProfiles || {})) {
@@ -1361,6 +1415,39 @@ elements.payrollForm.addEventListener('submit', async (event) => {
   }
 });
 
+elements.payrollSessionDates.addEventListener('input', () => {
+  updatePayrollSessionSummary();
+  if (!payrollPreview) return;
+  payrollPreview = buildPayrollPreview();
+  renderPayrollPreview();
+});
+
+elements.savePayrollSessionPlan.addEventListener('click', async () => {
+  const block = selectedPayrollRosterBlock();
+  const key = selectedPayrollSessionPlanKey();
+  const sessions = currentPayrollSessionRows();
+  if (!block || !key || !sessions.length) return;
+  const record = {
+    id: key,
+    updatedAt: new Date().toISOString(),
+    month: elements.payrollCalcMonth.value,
+    rosterKey: block.key,
+    rosterSheet: block.teacherSheet,
+    courseName: block.title || '',
+    teacherName: elements.payrollCalcTeacher.value.trim() || block.teacherSheet,
+    sessions
+  };
+  state.courseSessionPlans[key] = record;
+  updatePayrollSessionSummary();
+  saveState();
+  setCloudStatus('堂次日期已儲存於本機');
+  try {
+    await saveCloudRecord('courseSessionPlans', record, key);
+  } catch (error) {
+    setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
+  }
+});
+
 elements.previewPayrollRun.addEventListener('click', () => {
   payrollPreview = buildPayrollPreview();
   renderPayrollPreview();
@@ -1376,6 +1463,11 @@ elements.previewPayrollRun.addEventListener('click', () => {
   elements.payrollRosterBlock
 ].forEach((element) => {
   element.addEventListener('change', () => {
+    if (element === elements.payrollCalcMonth || element === elements.payrollRosterBlock) {
+      syncPayrollSessionPlanEditor();
+    } else {
+      updatePayrollSessionSummary();
+    }
     if (!payrollPreview) return;
     payrollPreview = buildPayrollPreview();
     renderPayrollPreview();
@@ -1660,8 +1752,10 @@ document.querySelector('#clearAll').addEventListener('click', () => {
   state.payrollRuns.splice(0);
   state.studentNotes.splice(0);
   state.studentProfiles = {};
+  state.courseSessionPlans = {};
   state.importSnapshot = null;
   payrollPreview = null;
+  sessionPlanEditorKey = '';
   clearArmedUntil = 0;
   button.textContent = '清除本機草稿';
   renderAll();

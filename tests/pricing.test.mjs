@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { calculateTuitionAllocation } from '../public/js/pricing.mjs';
+import {
+  effectiveSessionsForEvents,
+  parseCourseSessionDates
+} from '../public/js/sessions.mjs';
 
 test('current three-subject package splits to 20600 each', () => {
   const result = calculateTuitionAllocation({
@@ -119,4 +123,30 @@ test('explicit zero paid amount is kept as zero', () => {
   assert.equal(result.totals.paid, 0);
   assert.equal(result.rows[0].revenueAmount, 0);
   assert.match(result.warnings.join('\n'), /實收 0 與規則推算 21600 不同/);
+});
+
+test('session dates infer withdrawal session from effective date', () => {
+  const sessions = parseCourseSessionDates(`
+    2026-05-03
+    2026-05-10
+    2026-05-17
+    2026-05-24
+  `);
+  const result = effectiveSessionsForEvents(4, [
+    { date: '2026-05-12', action: '退出', sessionNo: '' }
+  ], sessions);
+
+  assert.equal(result.sessions, 2);
+  assert.match(result.note, /退出第 3 堂/);
+  assert.match(result.note, /由日期推算/);
+});
+
+test('manual session number remains authoritative over date plan', () => {
+  const sessions = parseCourseSessionDates('2026-05-03\n2026-05-10\n2026-05-17\n2026-05-24');
+  const result = effectiveSessionsForEvents(4, [
+    { date: '2026-05-12', action: '加入', sessionNo: '2' }
+  ], sessions);
+
+  assert.equal(result.sessions, 3);
+  assert.match(result.note, /加入第 2 堂/);
 });

@@ -134,7 +134,7 @@
           </label>
           <label>
             <span>第幾堂</span>
-            <input name="sessionNo" inputmode="numeric" required>
+            <input name="sessionNo" inputmode="numeric" placeholder="可空白，薪資試算會用日期推算">
           </label>
           <label>
             <span>學生</span>
@@ -198,6 +198,14 @@
             <span>本月堂數</span>
             <input id="payrollCalcSessions" inputmode="numeric" value="4">
           </label>
+          <label class="wide">
+            <span>本月上課日期</span>
+            <textarea id="payrollSessionDates" rows="3" placeholder="一行一堂，例如 2026-05-03&#10;2026-05-10&#10;2026-05-17&#10;2026-05-24"></textarea>
+          </label>
+          <div class="session-tools wide">
+            <div id="payrollSessionSummary" class="muted">選擇老師名單區塊與月份後，可儲存本月堂次日期。</div>
+            <button class="ghost" id="savePayrollSessionPlan" type="button" disabled>儲存堂次日期</button>
+          </div>
           <label>
             <span>分潤比例 %</span>
             <input id="payrollCalcShare" inputmode="decimal" value="50">

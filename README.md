@@ -27,6 +27,7 @@ Firebase 專案也獨立使用 `bearhigh`，避免開發期與 `sciencebear-admi
 - 月底異動：可先記錄某班某日期第幾堂學生加入/退出。
 - 老師薪資草表：可先用堂數、鐘點與調整金額產生小計。
 - 老師薪資試算：可選 Numbers 匯入的老師名單區塊，依每位學生 `單堂`、本月堂數、加入/退出異動、分潤比例或固定鐘點產生試算，並可匯出 CSV 或 Excel 可開啟的正式薪資表 `.xls`。
+- 堂次日期表：薪資試算可為每個老師名單區塊與月份儲存一組本月上課日期；進退班異動若未填第幾堂，會用異動日期自動推算從哪一堂開始加入或退出。
 - 學生資料中心：可依學生、分頁/cohort、班級/課程、繳費狀態與同名風險查詢。
 - CRM 檔案：學生明細可看基本資料、課程、學費欄位、手動學費、進退班異動、追蹤備註與時間軸。
 - 班級名單：選定班級/課程後可查看該班名單與指定月份的加入/退出異動，並匯出 CSV。
@@ -38,6 +39,7 @@ Firebase 專案也獨立使用 `bearhigh`，避免開發期與 `sciencebear-admi
 - 登入 `neatnelsonhuang@gmail.com` 後可讀取雲端匯入快照。
 - 線上新增的學費、異動、薪資草表會同步到 `accounting/manual/*`。
 - 線上新增的學生 CRM 狀態與追蹤備註也會同步到 `accounting/manual/studentProfiles` 與 `accounting/manual/studentNotes`。
+- 線上新增的堂次日期表會同步到 `accounting/manual/courseSessionPlans`，用於月底薪資試算的日期轉堂次。
 - 登入後會讀回雲端 `accounting/manual/*`，避免換裝置後看不到先前手動紀錄。
 - `public/js/firebase-config.mjs` 不納入 Git；GitHub Pages 由 Actions 變數 `BEARHIGH_FIREBASE_API_KEY` 在部署時產生。
 
