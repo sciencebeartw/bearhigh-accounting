@@ -59,6 +59,7 @@ const elements = {
   previewPayrollRun: document.querySelector('#previewPayrollRun'),
   savePayrollPreview: document.querySelector('#savePayrollPreview'),
   exportPayrollPreviewCsv: document.querySelector('#exportPayrollPreviewCsv'),
+  exportPayrollPreviewXls: document.querySelector('#exportPayrollPreviewXls'),
   pricingVersion: document.querySelector('#pricingVersion'),
   packageId: document.querySelector('#packageId'),
   courseOptions: document.querySelector('#courseOptions'),
@@ -847,6 +848,7 @@ function renderPayrollPreview() {
     elements.payrollPreviewRows.innerHTML = emptyRow(6);
     elements.savePayrollPreview.disabled = true;
     elements.exportPayrollPreviewCsv.disabled = true;
+    elements.exportPayrollPreviewXls.disabled = true;
     return;
   }
 
@@ -874,6 +876,70 @@ function renderPayrollPreview() {
 
   elements.savePayrollPreview.disabled = false;
   elements.exportPayrollPreviewCsv.disabled = false;
+  elements.exportPayrollPreviewXls.disabled = false;
+}
+
+function payrollMethodLabel(preview) {
+  if (preview.fixedRate > 0) return `固定鐘點 $${formatMoney(preview.fixedRate)} / 堂`;
+  return `分潤 ${formatMoney(preview.sharePercent)}%`;
+}
+
+function buildPayrollXls(preview) {
+  const generatedAt = new Date().toLocaleString('zh-TW', { hour12: false });
+  const detailRows = preview.rows.map((row, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td>${escapeHtml(row.studentName)}</td>
+      <td>${escapeHtml(row.school)}</td>
+      <td class="money">${formatMoney(row.singleRevenue)}</td>
+      <td class="money">${formatMoney(row.sessionCount)}</td>
+      <td>${escapeHtml(row.eventNote || '')}</td>
+      <td class="money">${formatMoney(row.revenue)}</td>
+    </tr>
+  `).join('');
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: "Microsoft JhengHei", Arial, sans-serif; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #999; padding: 6px 8px; vertical-align: top; }
+    th { background: #e9f2ec; font-weight: 700; }
+    .title { font-size: 20px; font-weight: 700; text-align: center; }
+    .meta th { width: 140px; }
+    .money { text-align: right; mso-number-format: "#,##0"; }
+    .sign td { height: 48px; }
+  </style>
+</head>
+<body>
+  <table>
+    <tr><td class="title" colspan="7">山熊升大老師薪資表</td></tr>
+    <tr><td colspan="7"></td></tr>
+    <tr class="meta"><th>月份</th><td>${escapeHtml(preview.month || '')}</td><th>老師</th><td>${escapeHtml(preview.teacherName)}</td><th>班級 / 課程</th><td colspan="2">${escapeHtml(preview.courseName)}</td></tr>
+    <tr class="meta"><th>計算方式</th><td>${escapeHtml(payrollMethodLabel(preview))}</td><th>本月堂數</th><td class="money">${formatMoney(preview.sessionCount)}</td><th>名單來源</th><td colspan="2">${escapeHtml(preview.rosterSheet || '')}</td></tr>
+    <tr class="meta"><th>學生收入合計</th><td class="money">${formatMoney(preview.revenueTotal)}</td><th>老師基礎薪資</th><td class="money">${formatMoney(preview.teacherBase)}</td><th>調整</th><td class="money">${formatMoney(preview.adjustment)}</td><td></td></tr>
+    <tr class="meta"><th>老師小計</th><td class="money">${formatMoney(preview.total)}</td><th>備註</th><td colspan="4">${escapeHtml(preview.note || '')}</td></tr>
+    <tr><td colspan="7">產生時間：${escapeHtml(generatedAt)}</td></tr>
+    <tr><td colspan="7"></td></tr>
+    <tr>
+      <th>#</th>
+      <th>學生</th>
+      <th>學校</th>
+      <th>單堂收入</th>
+      <th>有效堂數</th>
+      <th>異動</th>
+      <th>收入小計</th>
+    </tr>
+    ${detailRows}
+    <tr><th colspan="6">收入合計</th><td class="money">${formatMoney(preview.revenueTotal)}</td></tr>
+    <tr><th colspan="6">老師小計</th><td class="money">${formatMoney(preview.total)}</td></tr>
+    <tr><td colspan="7"></td></tr>
+    <tr class="sign"><th>製表</th><td colspan="2"></td><th>覆核</th><td></td><th>老師確認</th><td></td></tr>
+  </table>
+</body>
+</html>`;
 }
 
 function accountingRef(path = '') {
@@ -1168,6 +1234,13 @@ function downloadFile(filename, content, type) {
   URL.revokeObjectURL(url);
 }
 
+function filenameSafe(value) {
+  return String(value || '')
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, '')
+    .slice(0, 60) || 'export';
+}
+
 function toCsv(rows) {
   return rows.map((row) => row.map((cell) => {
     const text = String(cell ?? '');
@@ -1348,6 +1421,17 @@ elements.exportPayrollPreviewCsv.addEventListener('click', () => {
   rows.push([]);
   rows.push(['薪資小計', payrollPreview.total, '學生收入合計', payrollPreview.revenueTotal, '老師基礎薪資', payrollPreview.teacherBase, '調整', payrollPreview.adjustment]);
   downloadFile('bearhigh-payroll-preview.csv', toCsv(rows), 'text/csv;charset=utf-8');
+});
+
+elements.exportPayrollPreviewXls.addEventListener('click', () => {
+  if (!payrollPreview) return;
+  const filename = [
+    'bearhigh-payroll',
+    filenameSafe(payrollPreview.month),
+    filenameSafe(payrollPreview.teacherName),
+    filenameSafe(payrollPreview.courseName)
+  ].filter(Boolean).join('-');
+  downloadFile(`${filename}.xls`, buildPayrollXls(payrollPreview), 'application/vnd.ms-excel;charset=utf-8');
 });
 
 document.querySelector('#exportJson').addEventListener('click', () => {
