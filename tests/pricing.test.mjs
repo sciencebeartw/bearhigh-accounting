@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { calculateTuitionAllocation } from '../public/js/pricing.mjs';
 import {
   effectiveSessionsForEvents,
-  parseCourseSessionDates
+  parseCourseSessionDates,
+  validateSessionDatePlan
 } from '../public/js/sessions.mjs';
 
 test('current three-subject package splits to 20600 each', () => {
@@ -149,4 +150,18 @@ test('manual session number remains authoritative over date plan', () => {
 
   assert.equal(result.sessions, 3);
   assert.match(result.note, /加入第 2 堂/);
+});
+
+test('session date plan rejects out-of-order dates', () => {
+  const sessions = parseCourseSessionDates('2026-05-17\n2026-05-10\n2026-05-24');
+  const errors = validateSessionDatePlan(sessions, 3);
+
+  assert.match(errors.join('\n'), /第 2 堂日期必須晚於第 1 堂/);
+});
+
+test('session date plan requires expected session count when provided', () => {
+  const sessions = parseCourseSessionDates('2026-05-03\n2026-05-10\n2026-05-17');
+  const errors = validateSessionDatePlan(sessions, 4);
+
+  assert.match(errors.join('\n'), /堂次日期 3 筆，與本月堂數 4 不一致/);
 });

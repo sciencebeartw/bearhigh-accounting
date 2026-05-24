@@ -23,7 +23,8 @@ import {
 import {
   effectiveSessionsForEvents,
   parseCourseSessionDates,
-  sessionDatesToText
+  sessionDatesToText,
+  validateSessionDatePlan
 } from './sessions.mjs';
 
 const storageKey = 'bearhigh.accounting.v1';
@@ -213,7 +214,7 @@ function nowId(prefix) {
 }
 
 function safeFirebaseKey(value) {
-  return String(value || '').replace(/[.#$[\]]/g, '-');
+  return String(value || '').replace(/[.#$\/\[\]\u0000-\u001f\u007f]/g, '-');
 }
 
 function parseNumber(value) {
@@ -319,6 +320,23 @@ function eventMatchesCourseName(event, courseName) {
   const target = String(courseName || '').replace(/\s+/g, '');
   if (!eventCourse || !target) return false;
   return eventCourse.includes(target) || target.includes(eventCourse);
+}
+
+function studentMatchesCourseName(student, courseName) {
+  const target = String(courseName || '').replace(/\s+/g, '');
+  if (!target) return false;
+  return (student.selectedCourses || []).some((course) => {
+    const label = courseLabel(course).replace(/\s+/g, '');
+    const header = String(course.header || '').replace(/\s+/g, '');
+    return (label && (label.includes(target) || target.includes(label))) ||
+      (header && (header.includes(target) || target.includes(header)));
+  });
+}
+
+function payrollStudentCandidates(studentNameValue, courseName) {
+  const sameNameStudents = getStudents().filter((student) => studentName(student) === studentNameValue);
+  const sameCourseStudents = sameNameStudents.filter((student) => studentMatchesCourseName(student, courseName));
+  return sameCourseStudents.length ? sameCourseStudents : sameNameStudents;
 }
 
 function studentMatchesFilters(student, tuitionEntries, nameCounts) {
@@ -789,11 +807,18 @@ function currentPayrollSessionRows() {
   return parseCourseSessionDates(elements.payrollSessionDates.value);
 }
 
+function payrollSessionPlanErrors() {
+  return validateSessionDatePlan(currentPayrollSessionRows(), elements.payrollCalcSessions.value);
+}
+
 function updatePayrollSessionSummary() {
   const key = selectedPayrollSessionPlanKey();
   const sessions = currentPayrollSessionRows();
   const expectedSessions = Math.max(0, Math.round(parseNumber(elements.payrollCalcSessions.value)));
-  elements.savePayrollSessionPlan.disabled = !key || sessions.length === 0;
+  const errors = payrollSessionPlanErrors();
+  const hasBlockingSessionPlanError = sessions.length > 0 && errors.length > 0;
+  elements.savePayrollSessionPlan.disabled = !key || sessions.length === 0 || hasBlockingSessionPlanError;
+  elements.previewPayrollRun.disabled = hasBlockingSessionPlanError;
   if (!key) {
     elements.payrollSessionSummary.textContent = '選擇老師名單區塊與月份後，可儲存本月堂次日期。';
     return;
@@ -804,6 +829,10 @@ function updatePayrollSessionSummary() {
   }
   const firstDate = sessions[0]?.date || '';
   const lastDate = sessions[sessions.length - 1]?.date || '';
+  if (errors.length) {
+    elements.payrollSessionSummary.textContent = errors.join(' ');
+    return;
+  }
   const countWarning = expectedSessions && sessions.length !== expectedSessions ? `，與本月堂數 ${expectedSessions} 不同` : '';
   elements.payrollSessionSummary.textContent = `已輸入 ${formatMoney(sessions.length)} 堂：${firstDate} 到 ${lastDate}${countWarning}`;
 }
@@ -820,7 +849,19 @@ function syncPayrollSessionPlanEditor(force = false) {
   updatePayrollSessionSummary();
 }
 
-function payrollEventsForStudent(studentNameValue, courseName, month) {
+function payrollEventsForStudent(studentNameValue, courseName, month, studentId = '') {
+  return state.membershipEvents
+    .filter((event) => {
+      const sameStudent = studentId
+        ? event.studentId === studentId || (!event.studentId && event.studentName === studentNameValue)
+        : event.studentName === studentNameValue && !event.studentId;
+      const sameMonth = !month || String(event.date || '').startsWith(month);
+      return sameStudent && sameMonth && eventMatchesCourseName(event, courseName);
+    })
+    .sort((a, b) => `${a.date}-${a.sessionNo}`.localeCompare(`${b.date}-${b.sessionNo}`));
+}
+
+function payrollEventsForStudentName(studentNameValue, courseName, month) {
   return state.membershipEvents
     .filter((event) => {
       const sameStudent = event.studentName === studentNameValue;
@@ -837,6 +878,8 @@ function buildPayrollPreview() {
   const month = elements.payrollCalcMonth.value;
   const sessionCount = Math.max(0, Math.round(parseNumber(elements.payrollCalcSessions.value)));
   const sessionRows = currentPayrollSessionRows();
+  const sessionErrors = payrollSessionPlanErrors();
+  if (sessionRows.length && sessionErrors.length) return null;
   const sharePercent = Math.max(0, parseNumber(elements.payrollCalcShare.value));
   const fixedRate = Math.max(0, parseNumber(elements.payrollCalcFixedRate.value));
   const adjustment = parseNumber(elements.payrollCalcAdjustment.value);
@@ -845,15 +888,23 @@ function buildPayrollPreview() {
     const fields = row.fields || {};
     const name = fields['姓名'] || '';
     const singleRevenue = parseNumber(fields['單堂']);
-    const events = payrollEventsForStudent(name, courseName, month);
+    const candidates = payrollStudentCandidates(name, courseName);
+    const isAmbiguousStudent = candidates.length > 1;
+    const studentId = candidates.length === 1 ? candidates[0].id : '';
+    const rawEvents = isAmbiguousStudent
+      ? payrollEventsForStudentName(name, courseName, month)
+      : payrollEventsForStudent(name, courseName, month, studentId);
+    const events = isAmbiguousStudent ? [] : rawEvents;
     const effective = effectiveSessionsForEvents(sessionCount, events, sessionRows);
+    const riskNote = isAmbiguousStudent && rawEvents.length ? '同名風險，異動未自動套用' : '';
+    const eventNote = [effective.note, riskNote].filter(Boolean).join('；');
     const revenue = Math.round(singleRevenue * effective.sessions);
     return {
       studentName: name,
       school: fields['學校'] || '',
       singleRevenue,
       sessionCount: effective.sessions,
-      eventNote: effective.note,
+      eventNote,
       revenue
     };
   }).filter((row) => row.studentName);
@@ -1426,7 +1477,11 @@ elements.savePayrollSessionPlan.addEventListener('click', async () => {
   const block = selectedPayrollRosterBlock();
   const key = selectedPayrollSessionPlanKey();
   const sessions = currentPayrollSessionRows();
-  if (!block || !key || !sessions.length) return;
+  const errors = payrollSessionPlanErrors();
+  if (!block || !key || !sessions.length || errors.length) {
+    updatePayrollSessionSummary();
+    return;
+  }
   const record = {
     id: key,
     updatedAt: new Date().toISOString(),

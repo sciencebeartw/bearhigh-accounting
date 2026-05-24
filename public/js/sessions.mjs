@@ -28,6 +28,31 @@ export function sessionDatesToText(sessions) {
     .join('\n');
 }
 
+export function validateSessionDatePlan(sessions, expectedSessionCount = 0) {
+  const rows = sessions || [];
+  const errors = [];
+  const expected = parseInteger(expectedSessionCount);
+  if (!rows.length) return errors;
+  if (expected > 0 && rows.length !== expected) {
+    errors.push(`堂次日期 ${rows.length} 筆，與本月堂數 ${expected} 不一致。`);
+  }
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const current = normalizeIsoDate(rows[index]?.date);
+    if (!current) {
+      errors.push(`第 ${index + 1} 堂日期格式不正確。`);
+      continue;
+    }
+    if (index === 0) continue;
+    const previous = normalizeIsoDate(rows[index - 1]?.date);
+    if (previous && current <= previous) {
+      errors.push(`第 ${index + 1} 堂日期必須晚於第 ${index} 堂。`);
+    }
+  }
+
+  return errors;
+}
+
 function resolveSessionNo(event, sessions, defaultSessions) {
   const explicitSessionNo = parseInteger(event.sessionNo);
   if (explicitSessionNo > 0) {
