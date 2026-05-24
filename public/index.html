@@ -179,6 +179,66 @@
       </section>
 
       <section class="panel" data-panel="payroll">
+        <section class="form-grid payroll-builder">
+          <label>
+            <span>試算月份</span>
+            <input id="payrollCalcMonth" type="month">
+          </label>
+          <label>
+            <span>老師名單區塊</span>
+            <select id="payrollRosterBlock">
+              <option value="">請先載入匯入資料</option>
+            </select>
+          </label>
+          <label>
+            <span>老師</span>
+            <input id="payrollCalcTeacher" autocomplete="off">
+          </label>
+          <label>
+            <span>本月堂數</span>
+            <input id="payrollCalcSessions" inputmode="numeric" value="4">
+          </label>
+          <label>
+            <span>分潤比例 %</span>
+            <input id="payrollCalcShare" inputmode="decimal" value="50">
+          </label>
+          <label>
+            <span>固定鐘點 / 堂</span>
+            <input id="payrollCalcFixedRate" inputmode="numeric" placeholder="若用鐘點制才填">
+          </label>
+          <label>
+            <span>調整</span>
+            <input id="payrollCalcAdjustment" inputmode="numeric">
+          </label>
+          <label class="wide">
+            <span>備註</span>
+            <input id="payrollCalcNote" autocomplete="off">
+          </label>
+          <div class="actions wide">
+            <button class="primary" id="previewPayrollRun" type="button">預覽薪資試算</button>
+            <button class="ghost" id="savePayrollPreview" type="button" disabled>加入薪資草表</button>
+            <button class="ghost" id="exportPayrollPreviewCsv" type="button" disabled>匯出本次試算 CSV</button>
+          </div>
+        </section>
+
+        <section class="import-summary" id="payrollPreviewSummary"></section>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>學生</th>
+                <th>學校</th>
+                <th>單堂收入</th>
+                <th>有效堂數</th>
+                <th>異動</th>
+                <th>收入小計</th>
+              </tr>
+            </thead>
+            <tbody id="payrollPreviewRows"></tbody>
+          </table>
+        </div>
+
         <form class="form-grid" id="payrollForm">
           <label>
             <span>月份</span>

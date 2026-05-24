@@ -143,6 +143,10 @@ button {
   padding: 18px;
 }
 
+.payroll-builder {
+  margin-bottom: 18px;
+}
+
 label,
 fieldset {
   min-width: 0;
