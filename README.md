@@ -26,6 +26,9 @@ Firebase 專案也獨立使用 `bearhigh`，避免開發期與 `sciencebear-admi
 - 送出防呆：未選課、特殊套餐課程不一致、負數或無效金額都不能記入。
 - 月底異動：可先記錄某班某日期第幾堂學生加入/退出。
 - 老師薪資草表：可先用堂數、鐘點與調整金額產生小計。
+- 學生資料中心：可依學生、分頁/cohort、班級/課程、繳費狀態與同名風險查詢。
+- CRM 檔案：學生明細可看基本資料、課程、學費欄位、手動學費、進退班異動、追蹤備註與時間軸。
+- 班級名單：選定班級/課程後可查看該班名單與指定月份的加入/退出異動，並匯出 CSV。
 - 匯出：本機草稿 JSON 與學費分攤 CSV。
 
 目前已接上 Firebase Google Auth 與 `bearhigh` RTDB：
@@ -33,6 +36,8 @@ Firebase 專案也獨立使用 `bearhigh`，避免開發期與 `sciencebear-admi
 - 未登入時仍可用本機 `localStorage` 草稿。
 - 登入 `neatnelsonhuang@gmail.com` 後可讀取雲端匯入快照。
 - 線上新增的學費、異動、薪資草表會同步到 `accounting/manual/*`。
+- 線上新增的學生 CRM 狀態與追蹤備註也會同步到 `accounting/manual/studentProfiles` 與 `accounting/manual/studentNotes`。
+- 登入後會讀回雲端 `accounting/manual/*`，避免換裝置後看不到先前手動紀錄。
 - `public/js/firebase-config.mjs` 不納入 Git；GitHub Pages 由 Actions 變數 `BEARHIGH_FIREBASE_API_KEY` 在部署時產生。
 
 ```bash

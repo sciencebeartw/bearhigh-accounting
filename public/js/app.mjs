@@ -35,6 +35,8 @@ let selectedStudentId = null;
 state.tuitionPayments ||= [];
 state.membershipEvents ||= [];
 state.payrollRuns ||= [];
+state.studentProfiles ||= {};
+state.studentNotes ||= [];
 state.importSnapshot ||= null;
 
 const elements = {
@@ -62,6 +64,9 @@ const elements = {
   importPayrollSearch: document.querySelector('#importPayrollSearch'),
   importStudentRows: document.querySelector('#importStudentRows'),
   importStudentSearch: document.querySelector('#importStudentSearch'),
+  classRosterRows: document.querySelector('#classRosterRows'),
+  classRosterSummary: document.querySelector('#classRosterSummary'),
+  rosterMonth: document.querySelector('#rosterMonth'),
   studentCenterRows: document.querySelector('#studentCenterRows'),
   studentCourseFilter: document.querySelector('#studentCourseFilter'),
   studentDashboardSummary: document.querySelector('#studentDashboardSummary'),
@@ -104,10 +109,13 @@ function saveState() {
     tuitionPayments: state.tuitionPayments,
     membershipEvents: state.membershipEvents,
     payrollRuns: state.payrollRuns,
+    studentProfiles: state.studentProfiles,
+    studentNotes: state.studentNotes,
     importSnapshot: null
   };
   localStorage.setItem(storageKey, JSON.stringify(persistedState));
-  elements.storageStatus.textContent = `本機草稿 ${state.tuitionPayments.length + state.membershipEvents.length + state.payrollRuns.length} 筆`;
+  const draftCount = state.tuitionPayments.length + state.membershipEvents.length + state.payrollRuns.length + state.studentNotes.length;
+  elements.storageStatus.textContent = `本機草稿 ${draftCount} 筆`;
 }
 
 function escapeHtml(value) {
@@ -178,6 +186,10 @@ function nowId(prefix) {
   return `${prefix}_${new Date().toISOString().replace(/[-:.TZ]/g, '')}_${Math.random().toString(16).slice(2, 7)}`;
 }
 
+function safeFirebaseKey(value) {
+  return String(value || '').replace(/[.#$[\]]/g, '-');
+}
+
 function getStudents() {
   return state.importSnapshot?.students || [];
 }
@@ -230,6 +242,43 @@ function paymentState(entries) {
   if (entries.some((entry) => entry.kind === 'payment_date')) return { key: 'paid', label: '有繳費日期' };
   if (entries.some((entry) => entry.kind === 'tuition')) return { key: 'tuition_no_payment', label: '未見繳費日期' };
   return { key: 'no_tuition', label: '無學費資料' };
+}
+
+function studentProfileOverride(studentId) {
+  return state.studentProfiles[studentId] || {};
+}
+
+function studentStatusLabel(studentId) {
+  const status = studentProfileOverride(studentId).status || 'active';
+  return {
+    active: '在讀',
+    watching: '觀望',
+    paused: '暫停',
+    withdrawn: '已退班',
+    graduated: '畢業'
+  }[status] || status;
+}
+
+function studentCourseLabelForKey(key) {
+  for (const student of getStudents()) {
+    for (const course of student.selectedCourses || []) {
+      if (courseKey(course) === key) return courseLabel(course);
+    }
+  }
+  return '';
+}
+
+function eventMatchesCourse(event, courseKeyValue) {
+  if (!courseKeyValue) return true;
+  const label = studentCourseLabelForKey(courseKeyValue);
+  const [, header] = courseKeyValue.split('|');
+  const eventCourse = String(event.courseName || '');
+  return Boolean(
+    eventCourse &&
+    ((label && label.includes(eventCourse)) ||
+      (label && eventCourse.includes(label)) ||
+      (header && eventCourse.includes(header)))
+  );
 }
 
 function studentMatchesFilters(student, tuitionEntries, nameCounts) {
@@ -328,8 +377,55 @@ function getManualRecordsForStudent(student) {
     )),
     membershipEvents: state.membershipEvents.filter((event) => (
       event.studentId === student.id || (!event.studentId && event.studentName === name)
-    ))
+    )),
+    notes: state.studentNotes.filter((note) => (
+      note.studentId === student.id || (!note.studentId && note.studentName === name)
+    )),
+    profile: studentProfileOverride(student.id)
   };
+}
+
+function renderTimelineItem(item) {
+  return `
+    <div class="timeline-item">
+      <strong>${escapeHtml(item.date || '未填日期')}</strong>
+      <span>${escapeHtml(item.type)}</span>
+      <p>${escapeHtml(item.text)}</p>
+    </div>
+  `;
+}
+
+function buildStudentTimeline(student, manual) {
+  const items = [];
+  for (const payment of manual.tuitionPayments) {
+    items.push({
+      date: payment.createdAt?.slice(0, 10) || '',
+      type: '學費',
+      text: `${(payment.courseNames || []).join('、')}，實收 $${formatMoney(payment.allocation?.totals?.paid || 0)}`
+    });
+  }
+  for (const event of manual.membershipEvents) {
+    items.push({
+      date: event.date || '',
+      type: '異動',
+      text: `${event.courseName || ''} ${event.action || ''}${event.sessionNo ? `，第 ${event.sessionNo} 堂` : ''}${event.note ? `；${event.note}` : ''}`
+    });
+  }
+  for (const note of manual.notes) {
+    items.push({
+      date: note.createdAt?.slice(0, 10) || '',
+      type: note.kind || '備註',
+      text: note.note || ''
+    });
+  }
+  if (manual.profile.followUpDate) {
+    items.push({
+      date: manual.profile.followUpDate,
+      type: '追蹤',
+      text: `${studentStatusLabel(student.id)}${manual.profile.owner ? `；負責 ${manual.profile.owner}` : ''}${manual.profile.note ? `；${manual.profile.note}` : ''}`
+    });
+  }
+  return items.sort((a, b) => String(b.date).localeCompare(String(a.date)));
 }
 
 function summaryCell(label, value) {
@@ -348,9 +444,12 @@ function renderStudentDetail(student, tuitionEntries, duplicateCount) {
   }
 
   const manual = getManualRecordsForStudent(student);
+  const profile = student.profile || {};
+  const profileOverride = manual.profile;
   const courses = student.selectedCourses || [];
   const payment = paymentState(tuitionEntries);
   const visibleTuitionEntries = tuitionEntries.slice(0, 40);
+  const timeline = buildStudentTimeline(student, manual).slice(0, 30);
 
   elements.studentDetail.innerHTML = `
     <div class="detail-header">
@@ -363,8 +462,77 @@ function renderStudentDetail(student, tuitionEntries, duplicateCount) {
     <div class="detail-meta">
       <span>${escapeHtml(studentSchool(student) || '未填學校')}</span>
       <span>${escapeHtml(payment.label)}</span>
+      <span>${escapeHtml(studentStatusLabel(student.id))}</span>
       ${duplicateCount > 1 ? `<span class="risk">同名 ${duplicateCount} 筆，請用分頁與列號確認</span>` : ''}
     </div>
+
+    <section class="detail-section">
+      <h3>基本資料</h3>
+      <div class="profile-grid">
+        <div><span>年級</span><strong>${escapeHtml(profile.grade || '')}</strong></div>
+        <div><span>國中</span><strong>${escapeHtml(profile.juniorHigh || '')}</strong></div>
+        <div><span>高中</span><strong>${escapeHtml(profile.highSchool || '')}</strong></div>
+        <div><span>會考</span><strong>${escapeHtml(profile.examScore || '')}</strong></div>
+        <div><span>母手機</span><strong>${escapeHtml(profile.motherPhone || '')}</strong></div>
+        <div><span>父手機</span><strong>${escapeHtml(profile.fatherPhone || '')}</strong></div>
+      </div>
+    </section>
+
+    <section class="detail-section">
+      <h3>CRM 狀態</h3>
+      <div class="detail-form">
+        <label>
+          <span>狀態</span>
+          <select class="student-profile-status">
+            <option value="active" ${profileOverride.status === 'active' || !profileOverride.status ? 'selected' : ''}>在讀</option>
+            <option value="watching" ${profileOverride.status === 'watching' ? 'selected' : ''}>觀望</option>
+            <option value="paused" ${profileOverride.status === 'paused' ? 'selected' : ''}>暫停</option>
+            <option value="withdrawn" ${profileOverride.status === 'withdrawn' ? 'selected' : ''}>已退班</option>
+            <option value="graduated" ${profileOverride.status === 'graduated' ? 'selected' : ''}>畢業</option>
+          </select>
+        </label>
+        <label>
+          <span>下次追蹤</span>
+          <input class="student-profile-followup" type="date" value="${escapeHtml(profileOverride.followUpDate || '')}">
+        </label>
+        <label>
+          <span>負責人</span>
+          <input class="student-profile-owner" autocomplete="off" value="${escapeHtml(profileOverride.owner || '')}">
+        </label>
+        <label class="wide">
+          <span>檔案備註</span>
+          <textarea class="student-profile-note" rows="2">${escapeHtml(profileOverride.note || '')}</textarea>
+        </label>
+        <button class="primary" type="button" data-save-student-profile="${escapeHtml(student.id)}">儲存學生檔案</button>
+      </div>
+    </section>
+
+    <section class="detail-section">
+      <h3>新增追蹤備註</h3>
+      <div class="detail-form">
+        <label>
+          <span>類型</span>
+          <select class="student-note-kind">
+            <option value="備註">備註</option>
+            <option value="電話">電話</option>
+            <option value="收款">收款</option>
+            <option value="追蹤">追蹤</option>
+          </select>
+        </label>
+        <label class="wide">
+          <span>內容</span>
+          <textarea class="student-note-text" rows="2"></textarea>
+        </label>
+        <button class="ghost" type="button" data-add-student-note="${escapeHtml(student.id)}">新增備註</button>
+      </div>
+    </section>
+
+    <section class="detail-section">
+      <h3>時間軸</h3>
+      <div class="timeline-list">
+        ${timeline.length ? timeline.map(renderTimelineItem).join('') : '<p class="empty">尚無手動紀錄</p>'}
+      </div>
+    </section>
 
     <section class="detail-section">
       <h3>班級 / 課程</h3>
@@ -493,6 +661,57 @@ function renderStudentCenter() {
   );
 }
 
+function rosterRowsForCurrentCourse() {
+  const course = elements.studentCourseFilter.value;
+  if (!state.importSnapshot || !course) return [];
+  const { tuitionByStudent } = buildStudentIndexes();
+  return getStudents()
+    .filter((student) => (student.selectedCourses || []).some((studentCourse) => courseKey(studentCourse) === course))
+    .map((student) => ({
+      student,
+      tuitionEntries: tuitionByStudent.get(student.id) || []
+    }));
+}
+
+function renderClassRoster() {
+  if (!state.importSnapshot) {
+    elements.classRosterSummary.textContent = '尚未載入匯入快照';
+    elements.classRosterRows.innerHTML = emptyRow(5);
+    return;
+  }
+
+  const course = elements.studentCourseFilter.value;
+  if (!course) {
+    elements.classRosterSummary.textContent = '選擇班級 / 課程後查看名單';
+    elements.classRosterRows.innerHTML = emptyRow(5);
+    return;
+  }
+
+  const month = elements.rosterMonth.value;
+  const rows = rosterRowsForCurrentCourse();
+  const courseName = studentCourseLabelForKey(course);
+  const monthEvents = state.membershipEvents.filter((event) => (
+    (!month || String(event.date || '').startsWith(month)) && eventMatchesCourse(event, course)
+  ));
+
+  elements.classRosterSummary.textContent = `${courseName || '目前課程'}：${formatMoney(rows.length)} 人${month ? `，${month} 異動 ${formatMoney(monthEvents.length)} 筆` : ''}`;
+  elements.classRosterRows.innerHTML = rows.length
+    ? rows.slice(0, 260).map(({ student, tuitionEntries }) => {
+      const name = studentName(student);
+      const studentEvents = monthEvents.filter((event) => event.studentId === student.id || (!event.studentId && event.studentName === name));
+      return `
+        <tr>
+          <td><strong>${escapeHtml(name || '未命名')}</strong></td>
+          <td>${escapeHtml(student.sheet)} · 列 ${escapeHtml(student.row)}</td>
+          <td>${escapeHtml(studentSchool(student))}</td>
+          <td>${escapeHtml(paymentState(tuitionEntries).label)}</td>
+          <td>${studentEvents.length ? studentEvents.map((event) => `${escapeHtml(event.date || '')} ${escapeHtml(event.action || '')}${event.sessionNo ? ` 第 ${escapeHtml(event.sessionNo)} 堂` : ''}`).join('<br>') : '<span class="muted">無</span>'}</td>
+        </tr>
+      `;
+    }).join('')
+    : emptyRow(5);
+}
+
 function accountingRef(path = '') {
   return ref(database, path ? `${accountingRoot}/${path}` : accountingRoot);
 }
@@ -529,19 +748,50 @@ async function loadCloudImportSnapshot() {
     return;
   }
   state.importSnapshot = snapshot.val();
+  await loadCloudManualRecords();
   renderAll();
   setActiveTab('import');
   setCloudStatus(`已載入 ${batchId}`);
 }
 
-async function saveCloudRecord(kind, record) {
+function mergeRecordsById(localRows, remoteRows) {
+  const rowsById = new Map();
+  for (const row of localRows || []) {
+    if (row?.id) rowsById.set(row.id, row);
+  }
+  for (const row of remoteRows || []) {
+    if (row?.id) rowsById.set(row.id, row);
+  }
+  return Array.from(rowsById.values());
+}
+
+async function loadCloudManualRecords() {
+  if (!currentUser) return;
+  const snapshot = await get(accountingRef('manual'));
+  const manual = snapshot.val() || {};
+  state.tuitionPayments = mergeRecordsById(state.tuitionPayments, Object.values(manual.tuitionPayments || {}));
+  state.membershipEvents = mergeRecordsById(state.membershipEvents, Object.values(manual.membershipEvents || {}));
+  state.payrollRuns = mergeRecordsById(state.payrollRuns, Object.values(manual.payrollRuns || {}));
+  state.studentNotes = mergeRecordsById(state.studentNotes, Object.values(manual.studentNotes || {}));
+
+  const remoteProfiles = {};
+  for (const profile of Object.values(manual.studentProfiles || {})) {
+    if (profile?.studentId) remoteProfiles[profile.studentId] = profile;
+  }
+  state.studentProfiles = {
+    ...state.studentProfiles,
+    ...remoteProfiles
+  };
+}
+
+async function saveCloudRecord(kind, record, key = record.id) {
   if (!currentUser) return;
   const payload = {
     ...record,
     syncedAt: new Date().toISOString(),
     syncedBy: currentUser.email || currentUser.uid
   };
-  await set(accountingRef(`manual/${kind}/${record.id}`), payload);
+  await set(accountingRef(`manual/${kind}/${safeFirebaseKey(key)}`), payload);
   setCloudStatus('雲端已同步');
 }
 
@@ -733,6 +983,7 @@ function renderAll() {
   renderPayroll();
   renderRecords();
   renderStudentCenter();
+  renderClassRoster();
   renderImport();
   saveState();
 }
@@ -959,8 +1210,14 @@ elements.importPayrollSearch.addEventListener('input', renderImport);
   elements.studentDuplicateOnly
 ].forEach((element) => {
   element.addEventListener('input', renderStudentCenter);
-  element.addEventListener('change', renderStudentCenter);
+  element.addEventListener('change', () => {
+    renderStudentCenter();
+    renderClassRoster();
+  });
 });
+
+elements.rosterMonth.value = new Date().toISOString().slice(0, 7);
+elements.rosterMonth.addEventListener('change', renderClassRoster);
 
 elements.studentCenterRows.addEventListener('click', (event) => {
   const button = event.target.closest('[data-view-student]');
@@ -970,11 +1227,53 @@ elements.studentCenterRows.addEventListener('click', (event) => {
 });
 
 elements.studentDetail.addEventListener('click', (event) => {
-  const button = event.target.closest('[data-fill-student]');
-  if (!button) return;
-  fillStudentIntoForms(button.dataset.fillStudent);
-  setActiveTab('tuition');
-  renderAllocationPreview();
+  const fillButton = event.target.closest('[data-fill-student]');
+  if (fillButton) {
+    fillStudentIntoForms(fillButton.dataset.fillStudent);
+    setActiveTab('tuition');
+    renderAllocationPreview();
+    return;
+  }
+
+  const profileButton = event.target.closest('[data-save-student-profile]');
+  if (profileButton) {
+    const studentId = profileButton.dataset.saveStudentProfile;
+    const record = {
+      studentId,
+      updatedAt: new Date().toISOString(),
+      status: elements.studentDetail.querySelector('.student-profile-status')?.value || 'active',
+      followUpDate: elements.studentDetail.querySelector('.student-profile-followup')?.value || '',
+      owner: elements.studentDetail.querySelector('.student-profile-owner')?.value.trim() || '',
+      note: elements.studentDetail.querySelector('.student-profile-note')?.value.trim() || ''
+    };
+    state.studentProfiles[studentId] = record;
+    renderAll();
+    saveCloudRecord('studentProfiles', record, studentId).catch((error) => {
+      setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
+    });
+    return;
+  }
+
+  const noteButton = event.target.closest('[data-add-student-note]');
+  if (noteButton) {
+    const studentId = noteButton.dataset.addStudentNote;
+    const student = buildStudentIndexes().studentsById.get(studentId);
+    const note = elements.studentDetail.querySelector('.student-note-text')?.value.trim() || '';
+    if (!student || !note) return;
+    const record = {
+      id: nowId('note'),
+      studentId,
+      studentName: studentName(student),
+      kind: elements.studentDetail.querySelector('.student-note-kind')?.value || '備註',
+      note,
+      createdAt: new Date().toISOString()
+    };
+    state.studentNotes.push(record);
+    renderAll();
+    saveCloudRecord('studentNotes', record).catch((error) => {
+      setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
+    });
+  }
 });
 
 document.querySelector('#exportStudentFilterCsv').addEventListener('click', () => {
@@ -1011,6 +1310,26 @@ document.querySelector('#exportStudentFilterCsv').addEventListener('click', () =
   downloadFile('bearhigh-filtered-students.csv', toCsv(rows), 'text/csv;charset=utf-8');
 });
 
+document.querySelector('#exportClassRosterCsv').addEventListener('click', () => {
+  const course = elements.studentCourseFilter.value;
+  if (!course || !state.importSnapshot) return;
+  const rows = [['課程', '學生ID', '學生', '分頁', '列', '學校', '繳費狀態', 'CRM狀態']];
+  const courseName = studentCourseLabelForKey(course);
+  for (const { student, tuitionEntries } of rosterRowsForCurrentCourse()) {
+    rows.push([
+      courseName,
+      student.id,
+      studentName(student),
+      student.sheet,
+      student.row,
+      studentSchool(student),
+      paymentState(tuitionEntries).label,
+      studentStatusLabel(student.id)
+    ]);
+  }
+  downloadFile('bearhigh-class-roster.csv', toCsv(rows), 'text/csv;charset=utf-8');
+});
+
 document.querySelector('#clearAll').addEventListener('click', () => {
   const button = document.querySelector('#clearAll');
   const now = Date.now();
@@ -1028,6 +1347,8 @@ document.querySelector('#clearAll').addEventListener('click', () => {
   state.tuitionPayments.splice(0);
   state.membershipEvents.splice(0);
   state.payrollRuns.splice(0);
+  state.studentNotes.splice(0);
+  state.studentProfiles = {};
   state.importSnapshot = null;
   clearArmedUntil = 0;
   button.textContent = '清除本機草稿';

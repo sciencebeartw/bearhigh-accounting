@@ -26,7 +26,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -157,7 +158,8 @@ legend {
 }
 
 input,
-select {
+select,
+textarea {
   background: #fff;
   border: 1px solid #cfd8cd;
   border-radius: 8px;
@@ -169,9 +171,15 @@ select {
 }
 
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   border-color: var(--brand);
   box-shadow: 0 0 0 3px rgba(33, 98, 71, 0.12);
+}
+
+textarea {
+  min-height: 72px;
+  resize: vertical;
 }
 
 .wide {
@@ -315,6 +323,22 @@ td.money {
   margin-bottom: 18px;
 }
 
+.toolbar-field {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.toolbar-field span {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.toolbar-field input {
+  min-width: 160px;
+}
+
 .import-summary {
   display: grid;
   gap: 12px;
@@ -430,8 +454,36 @@ td.money {
   margin: 0 0 10px;
 }
 
+.detail-form {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.profile-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.profile-grid div {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px;
+}
+
+.profile-grid span {
+  color: var(--muted);
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+
 .tag-list,
-.mini-list {
+.mini-list,
+.timeline-list {
   display: grid;
   gap: 8px;
 }
@@ -455,6 +507,43 @@ td.money {
   color: var(--muted);
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.timeline-item {
+  border-left: 3px solid var(--brand);
+  background: #f8faf7;
+  border-radius: 0 8px 8px 0;
+  padding: 9px 10px;
+}
+
+.timeline-item strong {
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+  margin-right: 8px;
+}
+
+.timeline-item span {
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.timeline-item p {
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 5px 0 0;
+}
+
+.section-block {
+  margin-top: 24px;
+}
+
+.section-heading {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  justify-content: space-between;
 }
 
 .muted {
@@ -518,9 +607,16 @@ tr.is-selected td {
 @media (max-width: 860px) {
   .form-grid,
   .filter-grid,
+  .detail-form,
+  .profile-grid,
   .record-grid,
   .split-view {
     grid-template-columns: 1fr;
+  }
+
+  .toolbar-field {
+    margin-left: 0;
+    width: 100%;
   }
 
   .detail-panel {

@@ -233,6 +233,11 @@
       <section class="panel" data-panel="students">
         <div class="record-toolbar">
           <button class="ghost" id="exportStudentFilterCsv" type="button">匯出目前學生名單 CSV</button>
+          <button class="ghost" id="exportClassRosterCsv" type="button">匯出目前班級名單 CSV</button>
+          <label class="toolbar-field">
+            <span>月份異動</span>
+            <input id="rosterMonth" type="month">
+          </label>
         </div>
 
         <section class="import-summary" id="studentDashboardSummary"></section>
@@ -293,6 +298,27 @@
             <p class="empty">選一位學生查看課程、學費與異動紀錄</p>
           </aside>
         </div>
+
+        <section class="section-block">
+          <div class="section-heading">
+            <h2>班級名單 / 月異動</h2>
+            <div id="classRosterSummary" class="muted">選擇班級 / 課程後查看名單</div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>學生</th>
+                  <th>分頁</th>
+                  <th>學校</th>
+                  <th>繳費狀態</th>
+                  <th>本月異動</th>
+                </tr>
+              </thead>
+              <tbody id="classRosterRows"></tbody>
+            </table>
+          </div>
+        </section>
       </section>
 
       <section class="panel" data-panel="import">
