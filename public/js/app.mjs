@@ -108,6 +108,9 @@ const elements = {
   classRosterSummary: document.querySelector('#classRosterSummary'),
   courseOverviewRows: document.querySelector('#courseOverviewRows'),
   gradeOverviewRows: document.querySelector('#gradeOverviewRows'),
+  studentMatrixHead: document.querySelector('#studentMatrixHead'),
+  studentMatrixRows: document.querySelector('#studentMatrixRows'),
+  studentMatrixSummary: document.querySelector('#studentMatrixSummary'),
   rosterMonth: document.querySelector('#rosterMonth'),
   studentCenterRows: document.querySelector('#studentCenterRows'),
   studentCourseFilter: document.querySelector('#studentCourseFilter'),
@@ -260,6 +263,13 @@ function canonicalSubject(value) {
   if (/社會|地理|歷史|公民/.test(textValue)) return '社會';
   if (/自然/.test(textValue)) return '自然';
   return textValue.replace(/學收|課程|班/g, '').trim();
+}
+
+function excelSerialDateToIso(value) {
+  const serial = Number(value);
+  if (!Number.isFinite(serial) || serial < 20000 || serial > 80000) return '';
+  const utc = Date.UTC(1899, 11, 30) + Math.round(serial) * 86400000;
+  return new Date(utc).toISOString().slice(0, 10);
 }
 
 function getStudents() {
@@ -508,6 +518,13 @@ function tuitionSummaryText(entries, maxItems = 3) {
     .slice(0, maxItems)
     .map((entry) => `${entry.header} ${formatMoney(tuitionAmount(entry))}`);
   return [`總 ${formatMoney(total)}`, ...labels].join('；');
+}
+
+function tuitionEntryDisplayValue(entry) {
+  if (!entry) return '';
+  if (entry.kind === 'payment_date') return excelSerialDateToIso(entry.value) || String(entry.value || '');
+  if (['tuition', 'discount_or_voucher', 'refund'].includes(entry.kind)) return formatMoney(tuitionAmount(entry));
+  return String(entry.value ?? '');
 }
 
 function courseTuitionForStudent(student, courseKeyValue, tuitionEntries) {
@@ -889,6 +906,98 @@ function renderStudentOverviews() {
       </tr>
     `).join('')
     : emptyRow(5);
+}
+
+function filteredStudentMatrixData() {
+  if (!state.importSnapshot) {
+    return { rows: [], courseColumns: [], feeColumns: [], tuitionByStudent: new Map() };
+  }
+  const { nameCounts, tuitionByStudent } = buildStudentIndexes();
+  const rows = getStudents().filter((student) => (
+    studentMatchesFilters(student, tuitionByStudent.get(student.id) || [], nameCounts)
+  ));
+  const courseColumns = new Map();
+  const feeColumns = new Map();
+
+  for (const student of rows) {
+    for (const course of student.selectedCourses || []) {
+      const key = courseKey(course);
+      if (!courseColumns.has(key)) {
+        courseColumns.set(key, {
+          key,
+          label: courseLabel(course),
+          sort: columnIndex(course.column)
+        });
+      }
+    }
+    for (const entry of tuitionByStudent.get(student.id) || []) {
+      const key = `${entry.column}|${entry.header}|${entry.kind}`;
+      if (!feeColumns.has(key)) {
+        feeColumns.set(key, {
+          key,
+          label: `${entry.header} / 欄 ${entry.column}`,
+          sort: columnIndex(entry.column),
+          kind: entry.kind
+        });
+      }
+    }
+  }
+
+  return {
+    rows,
+    courseColumns: Array.from(courseColumns.values()).sort((a, b) => a.sort - b.sort || a.label.localeCompare(b.label, 'zh-Hant')),
+    feeColumns: Array.from(feeColumns.values()).sort((a, b) => a.sort - b.sort || a.label.localeCompare(b.label, 'zh-Hant')),
+    tuitionByStudent
+  };
+}
+
+function renderStudentMatrix() {
+  if (!state.importSnapshot) {
+    elements.studentMatrixSummary.textContent = '尚未載入匯入快照';
+    elements.studentMatrixHead.innerHTML = '<tr><th>尚無資料</th></tr>';
+    elements.studentMatrixRows.innerHTML = emptyRow(1);
+    return;
+  }
+
+  const { rows, courseColumns, feeColumns, tuitionByStudent } = filteredStudentMatrixData();
+  const visibleRows = rows.slice(0, 500);
+  const baseHeaders = ['分頁', '列', '姓名', '高中/學校', '國中', '年級', '繳費狀態', '總學收'];
+  elements.studentMatrixSummary.textContent = `目前篩選 ${formatMoney(rows.length)} 位學生，顯示 ${formatMoney(visibleRows.length)} 位；課程欄 ${formatMoney(courseColumns.length)} 欄，收費欄 ${formatMoney(feeColumns.length)} 欄。`;
+  elements.studentMatrixHead.innerHTML = `
+    <tr>
+      ${baseHeaders.map((header) => `<th>${escapeHtml(header)}</th>`).join('')}
+      ${courseColumns.map((column) => `<th class="matrix-course">課程｜${escapeHtml(column.label)}</th>`).join('')}
+      ${feeColumns.map((column) => `<th class="matrix-fee">收費｜${escapeHtml(column.label)}</th>`).join('')}
+    </tr>
+  `;
+
+  elements.studentMatrixRows.innerHTML = visibleRows.length
+    ? visibleRows.map((student) => {
+      const tuitionEntries = tuitionByStudent.get(student.id) || [];
+      const courseSet = new Set((student.selectedCourses || []).map(courseKey));
+      const feeByKey = new Map(tuitionEntries.map((entry) => [`${entry.column}|${entry.header}|${entry.kind}`, entry]));
+      return `
+        <tr>
+          <td>${escapeHtml(student.sheet)}</td>
+          <td class="money">${escapeHtml(student.row)}</td>
+          <td><strong>${escapeHtml(studentName(student) || '')}</strong></td>
+          <td>${escapeHtml(studentSchool(student))}</td>
+          <td>${escapeHtml(student.profile?.juniorHigh || '')}</td>
+          <td>${escapeHtml(student.profile?.grade || '')}</td>
+          <td>${escapeHtml(paymentState(tuitionEntries).label)}</td>
+          <td class="money">${formatMoney(tuitionTotal(tuitionEntries))}</td>
+          ${courseColumns.map((column) => `<td class="matrix-check">${courseSet.has(column.key) ? '✓' : ''}</td>`).join('')}
+          ${feeColumns.map((column) => `<td class="money">${escapeHtml(tuitionEntryDisplayValue(feeByKey.get(column.key)))}</td>`).join('')}
+        </tr>
+      `;
+    }).join('')
+    : emptyRow(baseHeaders.length + courseColumns.length + feeColumns.length);
+
+  if (rows.length > visibleRows.length) {
+    elements.studentMatrixRows.insertAdjacentHTML('beforeend', `
+      <tr><td colspan="${baseHeaders.length + courseColumns.length + feeColumns.length}" class="empty">另有 ${formatMoney(rows.length - visibleRows.length)} 位學生未顯示，請縮小篩選條件。</td></tr>
+    `);
+  }
 }
 
 function rosterRowsForCurrentCourse() {
@@ -1661,6 +1770,7 @@ function renderAll() {
   renderPayrollPreview();
   renderRecords();
   renderStudentCenter();
+  renderStudentMatrix();
   renderStudentOverviews();
   renderClassRoster();
   renderImport();
@@ -2041,6 +2151,13 @@ document.querySelector('#exportImportedPayrollCsv').addEventListener('click', ()
 elements.importStudentSearch.addEventListener('input', renderImport);
 elements.importPayrollSearch.addEventListener('input', renderImport);
 
+function renderStudentViews() {
+  renderStudentCenter();
+  renderStudentMatrix();
+  renderStudentOverviews();
+  renderClassRoster();
+}
+
 [
   elements.studentKeyword,
   elements.studentSheetFilter,
@@ -2048,11 +2165,8 @@ elements.importPayrollSearch.addEventListener('input', renderImport);
   elements.studentPaymentFilter,
   elements.studentDuplicateOnly
 ].forEach((element) => {
-  element.addEventListener('input', renderStudentCenter);
-  element.addEventListener('change', () => {
-    renderStudentCenter();
-    renderClassRoster();
-  });
+  element.addEventListener('input', renderStudentViews);
+  element.addEventListener('change', renderStudentViews);
 });
 
 elements.rosterMonth.value = new Date().toISOString().slice(0, 7);
@@ -2193,6 +2307,42 @@ document.querySelector('#exportCourseSummaryCsv').addEventListener('click', () =
     }
   }
   downloadFile('bearhigh-course-summary.csv', toCsv(rows), 'text/csv;charset=utf-8');
+});
+
+document.querySelector('#exportStudentMatrixCsv').addEventListener('click', () => {
+  if (!state.importSnapshot) return;
+  const { rows, courseColumns, feeColumns, tuitionByStudent } = filteredStudentMatrixData();
+  const header = [
+    '分頁',
+    '列',
+    '姓名',
+    '高中/學校',
+    '國中',
+    '年級',
+    '繳費狀態',
+    '總學收',
+    ...courseColumns.map((column) => `課程｜${column.label}`),
+    ...feeColumns.map((column) => `收費｜${column.label}`)
+  ];
+  const csvRows = [header];
+  for (const student of rows) {
+    const tuitionEntries = tuitionByStudent.get(student.id) || [];
+    const courseSet = new Set((student.selectedCourses || []).map(courseKey));
+    const feeByKey = new Map(tuitionEntries.map((entry) => [`${entry.column}|${entry.header}|${entry.kind}`, entry]));
+    csvRows.push([
+      student.sheet,
+      student.row,
+      studentName(student),
+      studentSchool(student),
+      student.profile?.juniorHigh || '',
+      student.profile?.grade || '',
+      paymentState(tuitionEntries).label,
+      tuitionTotal(tuitionEntries),
+      ...courseColumns.map((column) => courseSet.has(column.key) ? '✓' : ''),
+      ...feeColumns.map((column) => tuitionEntryDisplayValue(feeByKey.get(column.key)))
+    ]);
+  }
+  downloadFile('bearhigh-student-matrix.csv', toCsv(csvRows), 'text/csv;charset=utf-8');
 });
 
 document.querySelector('#exportClassRosterCsv').addEventListener('click', () => {

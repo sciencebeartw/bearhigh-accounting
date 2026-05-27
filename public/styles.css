@@ -400,6 +400,69 @@ textarea {
   overflow-x: auto;
 }
 
+.matrix-wrap {
+  max-height: 68vh;
+  overflow: auto;
+}
+
+.matrix-table {
+  font-size: 0.82rem;
+  min-width: max-content;
+}
+
+.matrix-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.matrix-table th,
+.matrix-table td {
+  max-width: 180px;
+  white-space: nowrap;
+}
+
+.matrix-table th:nth-child(-n + 3),
+.matrix-table td:nth-child(-n + 3) {
+  background: var(--surface);
+  position: sticky;
+  z-index: 1;
+}
+
+.matrix-table th:nth-child(1),
+.matrix-table td:nth-child(1) {
+  left: 0;
+}
+
+.matrix-table th:nth-child(2),
+.matrix-table td:nth-child(2) {
+  left: 150px;
+}
+
+.matrix-table th:nth-child(3),
+.matrix-table td:nth-child(3) {
+  left: 210px;
+}
+
+.matrix-table th:nth-child(-n + 3) {
+  background: #eef6fa;
+  z-index: 3;
+}
+
+.matrix-check {
+  color: var(--brand);
+  font-weight: 900;
+  text-align: center;
+}
+
+.matrix-course {
+  background: #e3f3f9;
+}
+
+.matrix-fee {
+  background: #eef6fa;
+}
+
 table {
   border-collapse: collapse;
   min-width: 720px;

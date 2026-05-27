@@ -382,6 +382,7 @@
           <button class="ghost" id="exportClassRosterCsv" type="button">匯出目前班級名單 CSV</button>
           <button class="ghost" id="exportGradeSummaryCsv" type="button">匯出年級總表 CSV</button>
           <button class="ghost" id="exportCourseSummaryCsv" type="button">匯出班級總表 CSV</button>
+          <button class="ghost" id="exportStudentMatrixCsv" type="button">匯出年級大表 CSV</button>
           <label class="toolbar-field">
             <span>月份異動</span>
             <input id="rosterMonth" type="month">
@@ -422,6 +423,21 @@
             <span>只看同名風險</span>
           </label>
         </div>
+
+        <section class="section-block">
+          <div class="section-heading">
+            <div>
+              <h2>年級大表</h2>
+              <p class="muted" id="studentMatrixSummary">依目前篩選顯示，一列一個學生，可左右滑查看課程勾選與收費欄位。</p>
+            </div>
+          </div>
+          <div class="table-wrap matrix-wrap">
+            <table class="matrix-table">
+              <thead id="studentMatrixHead"></thead>
+              <tbody id="studentMatrixRows"></tbody>
+            </table>
+          </div>
+        </section>
 
         <section class="section-block">
           <div class="section-heading">
