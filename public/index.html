@@ -13,6 +13,18 @@
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
+    <section class="login-gate" id="loginGate">
+      <div class="login-card">
+        <img class="login-logo" src="./accounting-icon-192.png" alt="山熊升大高中帳務">
+        <p class="eyebrow">BearHigh</p>
+        <h1>高中帳務工作台</h1>
+        <p class="login-copy">登入後會自動載入雲端學生、老師名單與帳務草稿。</p>
+        <button class="primary login-button" id="loginGateSignIn" type="button">Google 登入</button>
+        <div class="status-pill login-status" id="loginGateStatus">尚未登入</div>
+      </div>
+    </section>
+
+    <div id="appShell" hidden>
     <header class="topbar">
       <div class="brand-lockup">
         <img class="app-logo" src="./accounting-icon-192.png" alt="山熊升大">
@@ -514,6 +526,7 @@
         </div>
       </section>
     </main>
+    </div>
 
     <template id="emptyRowTemplate">
       <tr>

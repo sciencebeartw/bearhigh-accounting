@@ -49,6 +49,10 @@ state.courseSessionPlans ||= {};
 state.importSnapshot ||= null;
 
 const elements = {
+  appShell: document.querySelector('#appShell'),
+  loginGate: document.querySelector('#loginGate'),
+  loginGateSignIn: document.querySelector('#loginGateSignIn'),
+  loginGateStatus: document.querySelector('#loginGateStatus'),
   tabs: document.querySelectorAll('.tab'),
   panels: document.querySelectorAll('.panel'),
   tuitionForm: document.querySelector('#tuitionForm'),
@@ -783,10 +787,14 @@ function getTeacherRosterBlocks() {
 function syncPayrollRosterOptions() {
   const selected = elements.payrollRosterBlock.value;
   const blocks = getTeacherRosterBlocks();
-  elements.payrollRosterBlock.innerHTML = '<option value="">請選擇老師名單區塊</option>' + blocks
+  const placeholder = blocks.length
+    ? '請選擇老師名單區塊'
+    : (currentUser ? '雲端資料尚無老師名單區塊' : '請先登入並載入雲端資料');
+  elements.payrollRosterBlock.innerHTML = `<option value="">${escapeHtml(placeholder)}</option>` + blocks
     .map((block) => `<option value="${escapeHtml(block.key)}">${escapeHtml(block.teacherSheet)}｜${escapeHtml(block.title)}｜${formatMoney(block.rowCount)} 人</option>`)
     .join('');
   elements.payrollRosterBlock.value = blocks.some((block) => block.key === selected) ? selected : '';
+  elements.payrollRosterBlock.disabled = blocks.length === 0;
 }
 
 function selectedPayrollRosterBlock() {
@@ -818,9 +826,11 @@ function updatePayrollSessionSummary() {
   const errors = payrollSessionPlanErrors();
   const hasBlockingSessionPlanError = sessions.length > 0 && errors.length > 0;
   elements.savePayrollSessionPlan.disabled = !key || sessions.length === 0 || hasBlockingSessionPlanError;
-  elements.previewPayrollRun.disabled = hasBlockingSessionPlanError;
+  elements.previewPayrollRun.disabled = !selectedPayrollRosterBlock() || hasBlockingSessionPlanError;
   if (!key) {
-    elements.payrollSessionSummary.textContent = '選擇老師名單區塊與月份後，可儲存本月堂次日期。';
+    elements.payrollSessionSummary.textContent = getTeacherRosterBlocks().length
+      ? '選擇老師名單區塊與月份後，可儲存本月堂次日期。'
+      : '尚未載入老師名單區塊，請先登入並載入雲端資料。';
     return;
   }
   if (!sessions.length) {
@@ -1050,6 +1060,9 @@ function setCloudStatus(message) {
 function renderAuth(user) {
   currentUser = user;
   const email = user?.email || '';
+  elements.loginGate.hidden = !!user;
+  elements.appShell.hidden = !user;
+  elements.loginGateStatus.textContent = email || '尚未登入';
   elements.authStatus.textContent = email || '尚未登入';
   elements.signInGoogle.hidden = !!user;
   elements.signOutGoogle.hidden = !user;
@@ -1057,7 +1070,7 @@ function renderAuth(user) {
   setCloudStatus(user ? '雲端已連線' : '雲端未連線');
 }
 
-async function loadCloudImportSnapshot() {
+async function loadCloudImportSnapshot({ afterLoadTab = 'import' } = {}) {
   if (!currentUser) {
     setCloudStatus('請先登入');
     return;
@@ -1077,7 +1090,7 @@ async function loadCloudImportSnapshot() {
   state.importSnapshot = snapshot.val();
   await loadCloudManualRecords();
   renderAll();
-  setActiveTab('import');
+  if (afterLoadTab) setActiveTab(afterLoadTab);
   setCloudStatus(`已載入 ${batchId}`);
 }
 
@@ -1632,7 +1645,7 @@ document.querySelector('#loadLocalImport').addEventListener('click', async () =>
 });
 
 elements.loadCloudImport.addEventListener('click', () => {
-  loadCloudImportSnapshot().catch((error) => {
+  loadCloudImportSnapshot({ afterLoadTab: 'import' }).catch((error) => {
     setCloudStatus(`雲端讀取失敗：${error.code || error.message}`);
   });
 });
@@ -1816,9 +1829,18 @@ document.querySelector('#clearAll').addEventListener('click', () => {
   renderAll();
 });
 
-elements.signInGoogle.addEventListener('click', () => {
+function startGoogleSignIn() {
   setCloudStatus('前往 Google 登入');
+  elements.loginGateStatus.textContent = '前往 Google 登入';
   signInWithRedirect(auth, googleProvider);
+}
+
+elements.signInGoogle.addEventListener('click', () => {
+  startGoogleSignIn();
+});
+
+elements.loginGateSignIn.addEventListener('click', () => {
+  startGoogleSignIn();
 });
 
 elements.signOutGoogle.addEventListener('click', async () => {
@@ -1827,12 +1849,13 @@ elements.signOutGoogle.addEventListener('click', async () => {
 
 getRedirectResult(auth).catch((error) => {
   setCloudStatus(`登入失敗：${error.code || error.message}`);
+  elements.loginGateStatus.textContent = `登入失敗：${error.code || error.message}`;
 });
 
 onAuthStateChanged(auth, (user) => {
   renderAuth(user);
   if (user) {
-    loadCloudImportSnapshot().catch((error) => {
+    loadCloudImportSnapshot({ afterLoadTab: 'payroll' }).catch((error) => {
       setCloudStatus(`雲端讀取失敗：${error.code || error.message}`);
     });
   }
