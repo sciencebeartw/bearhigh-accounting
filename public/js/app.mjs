@@ -1219,6 +1219,7 @@ function filteredStudentMatrixData() {
   const courseColumns = new Map();
   const feeColumns = new Map();
   const selectedSheet = elements.studentSheetFilter.value;
+  const selectedCourse = elements.studentCourseFilter.value;
   const enrollmentMap = manualEnrollmentsByStudent();
   const manualCourseIdsInRows = new Set(rows.flatMap((student) => (
     (enrollmentMap.get(student.id) || []).map((enrollment) => enrollment.courseId)
@@ -1249,8 +1250,9 @@ function filteredStudentMatrixData() {
   }
 
   for (const course of state.manualCourses || []) {
-    if (selectedSheet && course.cohort !== selectedSheet && !manualCourseIdsInRows.has(course.id)) continue;
     const key = manualCourseKey(course.id);
+    if (selectedCourse && selectedCourse !== key) continue;
+    if (selectedSheet && course.cohort !== selectedSheet && !manualCourseIdsInRows.has(course.id)) continue;
     const label = manualCourseLabel(course);
     if (!courseColumns.has(key)) {
       courseColumns.set(key, {
@@ -2536,7 +2538,7 @@ elements.previewPayrollRun.addEventListener('click', () => {
           elements.payrollCalcTeacher.value = block.teacherSheet || '';
         }
         if (block?.source === 'manualCourse') {
-          elements.payrollCalcShare.value = block.defaultShare || elements.payrollCalcShare.value || '50';
+          elements.payrollCalcShare.value = block.defaultShare || '50';
           elements.payrollCalcFixedRate.value = block.defaultFixedRate || '';
         }
       }

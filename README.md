@@ -35,11 +35,12 @@ Firebase 專案也獨立使用 `bearhigh`，避免開發期與 `sciencebear-admi
 
 目前已接上 Firebase Google Auth 與 `bearhigh` RTDB：
 
-- 未登入時仍可用本機 `localStorage` 草稿。
+- 未登入時只顯示登入畫面；完整工作台需登入後使用，避免真實帳務資料在公開頁面裸露。
 - 登入 `neatnelsonhuang@gmail.com` 後可讀取雲端匯入快照。
 - 線上新增的學費、異動、薪資草表會同步到 `accounting/manual/*`。
 - 線上新增的學生 CRM 狀態與追蹤備註也會同步到 `accounting/manual/studentProfiles` 與 `accounting/manual/studentNotes`。
 - 線上新增的堂次日期表會同步到 `accounting/manual/courseSessionPlans`，用於月底薪資試算的日期轉堂次。
+- 線上新增的學期/梯次、老師、學生、課程與報名收費會同步到 `accounting/manual/manualTerms`、`manualTeachers`、`manualStudents`、`manualCourses`、`manualCourseEnrollments`。
 - 登入後會讀回雲端 `accounting/manual/*`，避免換裝置後看不到先前手動紀錄。
 - `public/js/firebase-config.mjs` 不納入 Git；GitHub Pages 由 Actions 變數 `BEARHIGH_FIREBASE_API_KEY` 在部署時產生。
 
