@@ -203,6 +203,10 @@ button {
   padding: 18px;
 }
 
+.compact-form {
+  margin-top: 12px;
+}
+
 .payroll-builder {
   margin-bottom: 18px;
 }

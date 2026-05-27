@@ -394,6 +394,128 @@
         <section class="section-block">
           <div class="section-heading">
             <div>
+              <h2>網頁新增資料</h2>
+              <p class="muted">新學生與新科目會直接進 bearhigh 資料庫與年級大表；Numbers 只保留作每學期大量匯入底稿。</p>
+            </div>
+            <div id="manualCourseSummary" class="muted">尚未新增網頁科目</div>
+          </div>
+          <form class="form-grid compact-form" id="manualStudentForm">
+            <label>
+              <span>姓名</span>
+              <input name="name" required autocomplete="off">
+            </label>
+            <label>
+              <span>分頁 / 年級</span>
+              <select name="cohort" id="manualStudentCohort" required></select>
+            </label>
+            <label>
+              <span>高中 / 學校</span>
+              <input name="highSchool" autocomplete="off">
+            </label>
+            <label>
+              <span>國中</span>
+              <input name="juniorHigh" autocomplete="off">
+            </label>
+            <label>
+              <span>年級文字</span>
+              <input name="grade" autocomplete="off" placeholder="例：高一">
+            </label>
+            <label>
+              <span>母手機</span>
+              <input name="motherPhone" inputmode="tel" autocomplete="off">
+            </label>
+            <label>
+              <span>父手機</span>
+              <input name="fatherPhone" inputmode="tel" autocomplete="off">
+            </label>
+            <label>
+              <span>備註</span>
+              <input name="note" autocomplete="off">
+            </label>
+            <div class="actions wide">
+              <button class="primary" type="submit">新增學生</button>
+            </div>
+          </form>
+
+          <form class="form-grid compact-form" id="manualCourseForm">
+            <label>
+              <span>分頁 / 年級</span>
+              <select name="cohort" id="manualCourseCohort" required></select>
+            </label>
+            <label>
+              <span>學期 / 梯次</span>
+              <input name="term" autocomplete="off" placeholder="例：115學年度上學期">
+            </label>
+            <label>
+              <span>科目 / 班級</span>
+              <input name="courseName" required autocomplete="off" placeholder="例：高二國文">
+            </label>
+            <label>
+              <span>老師</span>
+              <input name="teacherName" autocomplete="off">
+            </label>
+            <label>
+              <span>預設學費</span>
+              <input name="defaultTuition" inputmode="numeric" placeholder="例：21600">
+            </label>
+            <label>
+              <span>堂數</span>
+              <input name="sessionCount" inputmode="numeric" placeholder="例：24">
+            </label>
+            <label class="wide">
+              <span>備註</span>
+              <input name="note" autocomplete="off">
+            </label>
+            <div class="actions wide">
+              <button class="primary" type="submit">新增科目欄位</button>
+            </div>
+          </form>
+
+          <form class="form-grid compact-form" id="manualEnrollmentForm">
+            <label>
+              <span>科目</span>
+              <select name="courseId" id="manualEnrollmentCourse" required></select>
+            </label>
+            <label>
+              <span>學生</span>
+              <select name="studentId" id="manualEnrollmentStudent" required></select>
+            </label>
+            <label>
+              <span>收費</span>
+              <input name="tuitionAmount" inputmode="numeric" placeholder="可沿用預設學費">
+            </label>
+            <label>
+              <span>繳費日期</span>
+              <input name="paymentDate" type="date">
+            </label>
+            <label class="wide">
+              <span>備註</span>
+              <input name="note" autocomplete="off">
+            </label>
+            <div class="actions wide">
+              <button class="primary" type="submit">把學生加入科目</button>
+            </div>
+          </form>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>科目 / 班級</th>
+                  <th>分頁 / 年級</th>
+                  <th>老師</th>
+                  <th>預設學費</th>
+                  <th>學生數</th>
+                </tr>
+              </thead>
+              <tbody id="manualCourseRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="section-block">
+          <div class="section-heading">
+            <div>
               <h2>年級大表</h2>
               <p class="muted" id="studentMatrixSummary">依目前篩選顯示，一列一個學生，可左右滑查看課程勾選與收費欄位。</p>
             </div>
