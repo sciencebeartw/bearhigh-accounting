@@ -39,6 +39,7 @@ let clearArmedUntil = 0;
 let currentUser = null;
 let selectedStudentId = null;
 let payrollPreview = null;
+let payrollSettlement = null;
 let sessionPlanEditorKey = '';
 
 state.tuitionPayments ||= [];
@@ -87,6 +88,18 @@ const elements = {
   payrollCalcSessions: document.querySelector('#payrollCalcSessions'),
   payrollCalcShare: document.querySelector('#payrollCalcShare'),
   payrollCalcTeacher: document.querySelector('#payrollCalcTeacher'),
+  payrollSettlementClassRows: document.querySelector('#payrollSettlementClassRows'),
+  payrollSettlementHeadRate: document.querySelector('#payrollSettlementHeadRate'),
+  payrollSettlementHourlyRate: document.querySelector('#payrollSettlementHourlyRate'),
+  payrollSettlementHours: document.querySelector('#payrollSettlementHours'),
+  payrollSettlementMinBase: document.querySelector('#payrollSettlementMinBase'),
+  payrollSettlementMinBonus: document.querySelector('#payrollSettlementMinBonus'),
+  payrollSettlementMinThreshold: document.querySelector('#payrollSettlementMinThreshold'),
+  payrollSettlementMonth: document.querySelector('#payrollSettlementMonth'),
+  payrollSettlementScienceRate: document.querySelector('#payrollSettlementScienceRate'),
+  payrollSettlementShare: document.querySelector('#payrollSettlementShare'),
+  payrollSettlementSummary: document.querySelector('#payrollSettlementSummary'),
+  payrollSettlementTeacherRows: document.querySelector('#payrollSettlementTeacherRows'),
   payrollEventAction: document.querySelector('#payrollEventAction'),
   payrollEventDate: document.querySelector('#payrollEventDate'),
   payrollEventList: document.querySelector('#payrollEventList'),
@@ -106,6 +119,8 @@ const elements = {
   exportPayrollPreviewCsv: document.querySelector('#exportPayrollPreviewCsv'),
   exportPayrollPreviewPrint: document.querySelector('#exportPayrollPreviewPrint'),
   exportPayrollPreviewXls: document.querySelector('#exportPayrollPreviewXls'),
+  buildPayrollSettlement: document.querySelector('#buildPayrollSettlement'),
+  printPayrollSettlement: document.querySelector('#printPayrollSettlement'),
   pricingVersion: document.querySelector('#pricingVersion'),
   packageId: document.querySelector('#packageId'),
   courseOptions: document.querySelector('#courseOptions'),
@@ -1962,6 +1977,347 @@ function payrollMethodLabel(preview) {
   return `分潤 ${formatMoney(preview.sharePercent)}%`;
 }
 
+function payrollSettlementSettings() {
+  return {
+    month: elements.payrollSettlementMonth.value || elements.payrollCalcMonth.value || currentMonthIso(),
+    headRate: Math.max(0, parseNumber(elements.payrollSettlementHeadRate.value || 670)),
+    sharePercent: Math.max(0, parseNumber(elements.payrollSettlementShare.value || 50)),
+    scienceRate: Math.max(0, parseNumber(elements.payrollSettlementScienceRate.value || 900)),
+    minBase: Math.max(0, parseNumber(elements.payrollSettlementMinBase.value || 4500)),
+    minThreshold: Math.max(0, parseNumber(elements.payrollSettlementMinThreshold.value || 15)),
+    minBonus: Math.max(0, parseNumber(elements.payrollSettlementMinBonus.value || 300)),
+    hourlyRate: Math.max(0, parseNumber(elements.payrollSettlementHourlyRate.value || 800)),
+    hourlyHours: Math.max(0, parseNumber(elements.payrollSettlementHours.value || 3))
+  };
+}
+
+function payrollSettlementTeacherName(block) {
+  const sheet = block.teacherSheet || '';
+  const mapped = {
+    '化學師資': '化學師資',
+    '物理師資-Nick': '物理師資-Nick',
+    '英文師資': '英文師資',
+    '數學師資-明軒': '明軒數學',
+    '數學師資-黃浩': '黃浩數學',
+    '社會師資-蔣明': '蔣明社會',
+    '國文師資': '國文師資'
+  }[sheet];
+  return block.teacherName || mapped || sheet || '未命名老師';
+}
+
+function payrollSettlementMethod(block, settings) {
+  const sheet = block.teacherSheet || '';
+  const title = block.title || '';
+  if (sheet.includes('明軒') || title.includes('明軒')) {
+    return {
+      kind: 'mingxuan',
+      label: `保底 ${formatMoney(settings.minBase)} + 超過 ${formatMoney(settings.minThreshold)} 人每人 ${formatMoney(settings.minBonus)}`
+    };
+  }
+  if (sheet.includes('國文') || title.includes('國文')) {
+    return {
+      kind: 'hourly',
+      label: `鐘點 ${formatMoney(settings.hourlyRate)} x ${formatMoney(settings.hourlyHours)} 小時`
+    };
+  }
+  const manualFixedRate = Math.max(0, parseNumber(block.defaultFixedRate));
+  if (block.source === 'manualCourse' && manualFixedRate > 0) {
+    return {
+      kind: 'fixedSession',
+      fixedRate: manualFixedRate,
+      label: `固定 ${formatMoney(manualFixedRate)} / 堂`
+    };
+  }
+  const perHeadRate = title.includes('自然科學班') ? settings.scienceRate : settings.headRate;
+  return {
+    kind: 'share',
+    perHeadRate,
+    teacherPerHead: Math.round(perHeadRate * (settings.sharePercent / 100)),
+    label: `人均堂收 ${formatMoney(perHeadRate)} x 分潤 ${formatMoney(settings.sharePercent)}%`
+  };
+}
+
+function payrollSettlementSessionRows(block, month) {
+  const key = payrollSessionPlanKey(block.key, month);
+  const plan = key ? state.courseSessionPlans[key] : null;
+  return (plan?.sessions || []).slice().sort((a, b) => Number(a.sessionNo || 0) - Number(b.sessionNo || 0));
+}
+
+function payrollSettlementStudentState(row, block, month, sessions) {
+  const fields = row.fields || {};
+  const name = fields['姓名'] || '';
+  const explicitStudentId = fields['學生ID'] || '';
+  const candidates = explicitStudentId ? [] : payrollStudentCandidates(name, block.title || '');
+  const isAmbiguousStudent = !explicitStudentId && candidates.length > 1;
+  const studentId = explicitStudentId || (candidates.length === 1 ? candidates[0].id : '');
+  const rawEvents = isAmbiguousStudent
+    ? payrollEventsForStudentName(name, block.title || '', month)
+    : payrollEventsForStudent(name, block.title || '', month, studentId);
+  const events = isAmbiguousStudent ? [] : rawEvents;
+  const effective = effectiveSessionsForEvents(sessions.length, events, sessions);
+  return {
+    name,
+    school: fields['學校'] || '',
+    effective,
+    eventCount: rawEvents.length,
+    skippedEventCount: isAmbiguousStudent ? rawEvents.length : 0,
+    note: [
+      effective.note,
+      isAmbiguousStudent && rawEvents.length ? '同名風險，異動未自動套用' : ''
+    ].filter(Boolean).join('；')
+  };
+}
+
+function compactHeadcountText(details) {
+  const counts = details.map((detail) => detail.headcount);
+  if (!counts.length) return '未設定';
+  const first = counts[0];
+  const last = counts[counts.length - 1];
+  const min = Math.min(...counts);
+  const max = Math.max(...counts);
+  if (min === max) return `${formatMoney(first)} 人固定`;
+  if (counts.length <= 6) return counts.map((count) => formatMoney(count)).join(' / ');
+  return `${formatMoney(first)} -> ${formatMoney(last)} 人（${formatMoney(min)}-${formatMoney(max)}）`;
+}
+
+function buildPayrollSettlementClass(block, settings) {
+  const sessions = payrollSettlementSessionRows(block, settings.month);
+  const teacherName = payrollSettlementTeacherName(block);
+  const method = payrollSettlementMethod(block, settings);
+  const base = {
+    rosterKey: block.key,
+    teacherName,
+    courseName: block.title || '',
+    methodKind: method.kind,
+    methodLabel: method.label,
+    sessionCount: sessions.length,
+    personSessions: 0,
+    total: 0,
+    headcountText: '未設定',
+    status: '未設定堂次日期',
+    sessionDetails: [],
+    skippedEventCount: 0
+  };
+  if (!sessions.length) return base;
+
+  const students = (block.rows || [])
+    .map((row) => payrollSettlementStudentState(row, block, settings.month, sessions))
+    .filter((student) => student.name);
+  const skippedEventCount = students.reduce((sum, student) => sum + student.skippedEventCount, 0);
+  const eventCount = students.reduce((sum, student) => sum + student.eventCount, 0);
+
+  const sessionDetails = sessions.map((session) => {
+    const sessionNo = Number(session.sessionNo || 0);
+    const headcount = students.filter((student) => (
+      sessionNo >= Number(student.effective.activeFrom || 1) &&
+      sessionNo <= Number(student.effective.activeUntil || sessions.length)
+    )).length;
+    let amount = 0;
+    if (method.kind === 'mingxuan') {
+      amount = settings.minBase + Math.max(0, headcount - settings.minThreshold) * settings.minBonus;
+    } else if (method.kind === 'hourly') {
+      amount = Math.round(settings.hourlyRate * settings.hourlyHours);
+    } else if (method.kind === 'fixedSession') {
+      amount = Math.round(method.fixedRate || 0);
+    } else {
+      amount = Math.round((method.teacherPerHead || 0) * headcount);
+    }
+    return {
+      sessionNo,
+      date: session.date || '',
+      headcount,
+      amount
+    };
+  });
+
+  const personSessions = sessionDetails.reduce((sum, detail) => sum + detail.headcount, 0);
+  const total = sessionDetails.reduce((sum, detail) => sum + detail.amount, 0);
+  return {
+    ...base,
+    sessionCount: sessions.length,
+    personSessions,
+    total,
+    headcountText: compactHeadcountText(sessionDetails),
+    status: [
+      '已計算',
+      eventCount ? `${formatMoney(eventCount)} 筆異動` : '',
+      skippedEventCount ? `${formatMoney(skippedEventCount)} 筆同名待確認` : ''
+    ].filter(Boolean).join('，'),
+    sessionDetails,
+    skippedEventCount
+  };
+}
+
+function buildPayrollSettlementData() {
+  const settings = payrollSettlementSettings();
+  elements.payrollSettlementMonth.value = settings.month;
+  const blocks = getTeacherRosterBlocks();
+  const classes = blocks
+    .map((block) => buildPayrollSettlementClass(block, settings))
+    .sort((a, b) => {
+      const aMissing = a.sessionCount ? 0 : 1;
+      const bMissing = b.sessionCount ? 0 : 1;
+      return aMissing - bMissing ||
+        a.teacherName.localeCompare(b.teacherName, 'zh-Hant') ||
+        a.courseName.localeCompare(b.courseName, 'zh-Hant');
+    });
+
+  const teacherMap = new Map();
+  for (const row of classes.filter((item) => item.sessionCount > 0)) {
+    const key = `${row.teacherName}::${row.methodLabel}`;
+    const current = teacherMap.get(key) || {
+      teacherName: row.teacherName,
+      methodLabel: row.methodLabel,
+      classCount: 0,
+      sessionCount: 0,
+      personSessions: 0,
+      total: 0
+    };
+    current.classCount += 1;
+    current.sessionCount += row.sessionCount;
+    current.personSessions += row.personSessions;
+    current.total += row.total;
+    teacherMap.set(key, current);
+  }
+
+  const teachers = Array.from(teacherMap.values())
+    .sort((a, b) => b.total - a.total || a.teacherName.localeCompare(b.teacherName, 'zh-Hant'));
+  const total = teachers.reduce((sum, teacher) => sum + teacher.total, 0);
+  return {
+    id: nowId('payroll_settlement'),
+    generatedAt: new Date().toISOString(),
+    month: settings.month,
+    settings,
+    teachers,
+    classes,
+    calculatedClassCount: classes.filter((row) => row.sessionCount > 0).length,
+    missingClassCount: classes.filter((row) => row.sessionCount === 0).length,
+    total
+  };
+}
+
+function renderPayrollSettlement() {
+  if (!payrollSettlement) {
+    elements.payrollSettlementSummary.innerHTML = '<div class="record-item"><p>尚未產生月底結算。先儲存各班堂次日期，再按「產生月底結算」。</p></div>';
+    elements.payrollSettlementTeacherRows.innerHTML = emptyRow(6);
+    elements.payrollSettlementClassRows.innerHTML = emptyRow(7);
+    elements.printPayrollSettlement.disabled = true;
+    return;
+  }
+
+  elements.payrollSettlementSummary.innerHTML = [
+    `<div class="summary-cell"><strong>${escapeHtml(payrollSettlement.month)}</strong><span>月份</span></div>`,
+    summaryCell('已計算課程', payrollSettlement.calculatedClassCount),
+    summaryCell('未設定堂次', payrollSettlement.missingClassCount),
+    summaryCell('老師數', payrollSettlement.teachers.length),
+    summaryCell('應付總額', payrollSettlement.total)
+  ].join('');
+
+  elements.payrollSettlementTeacherRows.innerHTML = payrollSettlement.teachers.length
+    ? payrollSettlement.teachers.map((teacher) => `
+      <tr>
+        <td>${escapeHtml(teacher.teacherName)}</td>
+        <td>${escapeHtml(teacher.methodLabel)}</td>
+        <td class="money">${formatMoney(teacher.classCount)}</td>
+        <td class="money">${formatMoney(teacher.sessionCount)}</td>
+        <td class="money">${formatMoney(teacher.personSessions)}</td>
+        <td class="money">${formatMoney(teacher.total)}</td>
+      </tr>
+    `).join('')
+    : emptyRow(6);
+
+  elements.payrollSettlementClassRows.innerHTML = payrollSettlement.classes.length
+    ? payrollSettlement.classes.map((row) => `
+      <tr>
+        <td>${escapeHtml(row.teacherName)}</td>
+        <td>${escapeHtml(row.courseName)}</td>
+        <td class="money">${formatMoney(row.sessionCount)}</td>
+        <td>${escapeHtml(row.headcountText)}</td>
+        <td>${escapeHtml(row.methodLabel)}</td>
+        <td class="money">${formatMoney(row.total)}</td>
+        <td>${escapeHtml(row.status)}</td>
+      </tr>
+    `).join('')
+    : emptyRow(7);
+
+  elements.printPayrollSettlement.disabled = payrollSettlement.teachers.length === 0;
+}
+
+function buildPayrollSettlementPrintHtml(settlement) {
+  const generatedAt = new Date(settlement.generatedAt).toLocaleString('zh-TW', { hour12: false });
+  const teacherRows = settlement.teachers.map((teacher) => `
+    <tr>
+      <td>${escapeHtml(teacher.teacherName)}</td>
+      <td>${escapeHtml(teacher.methodLabel)}</td>
+      <td class="money">${formatMoney(teacher.classCount)}</td>
+      <td class="money">${formatMoney(teacher.sessionCount)}</td>
+      <td class="money">${formatMoney(teacher.personSessions)}</td>
+      <td class="money">${formatMoney(teacher.total)}</td>
+    </tr>
+  `).join('');
+  const classRows = settlement.classes
+    .filter((row) => row.sessionCount > 0)
+    .map((row) => {
+      const detailText = row.sessionDetails
+        .map((detail) => `第${formatMoney(detail.sessionNo)}堂 ${detail.date} ${formatMoney(detail.headcount)}人 $${formatMoney(detail.amount)}`)
+        .join(' / ');
+      return `
+        <tr>
+          <td>${escapeHtml(row.teacherName)}</td>
+          <td>${escapeHtml(row.courseName)}</td>
+          <td>${escapeHtml(row.headcountText)}</td>
+          <td>${escapeHtml(row.methodLabel)}</td>
+          <td>${escapeHtml(detailText)}</td>
+          <td class="money">${formatMoney(row.total)}</td>
+        </tr>
+      `;
+    }).join('');
+  const missingRows = settlement.classes
+    .filter((row) => row.sessionCount === 0)
+    .map((row) => `${row.teacherName}｜${row.courseName}`)
+    .join('、');
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>山熊升大老師薪資總表 ${escapeHtml(settlement.month)}</title>
+  <style>
+    body { color: #102a3a; font-family: "Microsoft JhengHei", Arial, sans-serif; margin: 24px; }
+    h1 { font-size: 24px; margin: 0 0 10px; }
+    h2 { font-size: 17px; margin: 22px 0 8px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #9fb7c7; padding: 7px 9px; vertical-align: top; }
+    th { background: #e8f4fb; font-weight: 700; }
+    .money { text-align: right; white-space: nowrap; }
+    .meta { color: #49606d; margin: 0 0 16px; }
+    .total { font-size: 20px; font-weight: 800; text-align: right; }
+    .warn { color: #9a5b00; font-size: 13px; margin-top: 12px; }
+    @media print { body { margin: 12mm; } }
+  </style>
+</head>
+<body>
+  <h1>山熊升大老師薪資總表</h1>
+  <p class="meta">月份：${escapeHtml(settlement.month)}｜製表：${escapeHtml(generatedAt)}</p>
+  <p class="total">應付總額：$${formatMoney(settlement.total)}</p>
+  <h2>老師付款小計</h2>
+  <table>
+    <thead>
+      <tr><th>老師</th><th>計算方式</th><th>課程數</th><th>堂數</th><th>人次</th><th>應付小計</th></tr>
+    </thead>
+    <tbody>${teacherRows || `<tr><td colspan="6">尚無已設定堂次的課程</td></tr>`}</tbody>
+  </table>
+  <h2>班級明細</h2>
+  <table>
+    <thead>
+      <tr><th>老師</th><th>班級 / 課程</th><th>人數變化</th><th>計算方式</th><th>堂次明細</th><th>小計</th></tr>
+    </thead>
+    <tbody>${classRows || `<tr><td colspan="6">尚無已設定堂次的課程</td></tr>`}</tbody>
+  </table>
+  ${missingRows ? `<p class="warn">未列入付款，因為尚未設定堂次日期：${escapeHtml(missingRows)}</p>` : ''}
+</body>
+</html>`;
+}
+
 function buildPayrollXls(preview) {
   const generatedAt = new Date().toLocaleString('zh-TW', { hour12: false });
   const sessionDateText = (preview.sessionDates || [])
@@ -2820,6 +3176,7 @@ function renderAll() {
   renderEvents();
   renderPayroll();
   renderPayrollPreview();
+  renderPayrollSettlement();
   renderAccounting();
   renderRecords();
   renderManualCourses();
@@ -3151,6 +3508,10 @@ elements.savePayrollSessionPlan.addEventListener('click', async () => {
   updatePayrollSessionSummary();
   saveState();
   setCloudStatus('堂次日期已儲存於本機');
+  if (payrollSettlement) {
+    payrollSettlement = buildPayrollSettlementData();
+    renderPayrollSettlement();
+  }
   try {
     await saveCloudRecord('courseSessionPlans', record, key);
   } catch (error) {
@@ -3182,6 +3543,10 @@ elements.savePayrollEvent.addEventListener('click', async () => {
   elements.payrollEventNote.value = '';
   payrollPreview = buildPayrollPreview();
   renderPayrollPreview();
+  if (payrollSettlement) {
+    payrollSettlement = buildPayrollSettlementData();
+    renderPayrollSettlement();
+  }
 });
 
 elements.previewPayrollRun.addEventListener('click', () => {
@@ -3287,6 +3652,45 @@ elements.exportPayrollPreviewXls.addEventListener('click', () => {
     filenameSafe(payrollPreview.courseName)
   ].filter(Boolean).join('-');
   downloadFile(`${filename}.xls`, buildPayrollXls(payrollPreview), 'application/vnd.ms-excel;charset=utf-8');
+});
+
+elements.buildPayrollSettlement.addEventListener('click', () => {
+  payrollSettlement = buildPayrollSettlementData();
+  renderPayrollSettlement();
+});
+
+elements.printPayrollSettlement.addEventListener('click', () => {
+  if (!payrollSettlement) return;
+  const popup = window.open('', '_blank');
+  const html = buildPayrollSettlementPrintHtml(payrollSettlement);
+  if (!popup) {
+    downloadFile('bearhigh-payroll-settlement.html', html, 'text/html;charset=utf-8');
+    setCloudStatus('瀏覽器封鎖列印視窗，已改下載 HTML，可開啟後列印成 PDF');
+    return;
+  }
+  popup.document.open();
+  popup.document.write(html);
+  popup.document.close();
+  popup.focus();
+  window.setTimeout(() => popup.print(), 350);
+});
+
+[
+  elements.payrollSettlementHeadRate,
+  elements.payrollSettlementHourlyRate,
+  elements.payrollSettlementHours,
+  elements.payrollSettlementMinBase,
+  elements.payrollSettlementMinBonus,
+  elements.payrollSettlementMinThreshold,
+  elements.payrollSettlementMonth,
+  elements.payrollSettlementScienceRate,
+  elements.payrollSettlementShare
+].forEach((element) => {
+  element.addEventListener('change', () => {
+    if (!payrollSettlement) return;
+    payrollSettlement = buildPayrollSettlementData();
+    renderPayrollSettlement();
+  });
 });
 
 elements.batchPaymentStudent.addEventListener('change', renderBatchPaymentChoices);
@@ -4035,6 +4439,10 @@ onAuthStateChanged(auth, (user) => {
     });
   }
 });
+
+const initialMonth = currentMonthIso();
+if (!elements.payrollCalcMonth.value) elements.payrollCalcMonth.value = initialMonth;
+if (!elements.payrollSettlementMonth.value) elements.payrollSettlementMonth.value = elements.payrollCalcMonth.value || initialMonth;
 
 renderOptions();
 renderAll();

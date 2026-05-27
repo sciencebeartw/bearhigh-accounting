@@ -660,6 +660,14 @@ td.money {
   margin-top: 0;
 }
 
+.settlement-split {
+  grid-template-columns: 1fr;
+}
+
+.settlement-split table {
+  min-width: 760px;
+}
+
 .detail-panel {
   background: var(--surface);
   border: 1px solid var(--line);

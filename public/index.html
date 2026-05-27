@@ -208,6 +208,91 @@
           </div>
         </div>
 
+        <section class="section-block">
+          <div class="section-heading">
+            <div>
+              <h2>月底薪資結算</h2>
+              <p class="muted">先把各班本月上課日期與進退班補齊，再一次產生給老闆看的老師付款總表。</p>
+            </div>
+          </div>
+          <div class="form-grid compact-form">
+            <label>
+              <span>結算月份</span>
+              <input id="payrollSettlementMonth" type="month">
+            </label>
+            <label>
+              <span>一般人均堂收</span>
+              <input id="payrollSettlementHeadRate" inputmode="numeric" value="670">
+            </label>
+            <label>
+              <span>一般分潤 %</span>
+              <input id="payrollSettlementShare" inputmode="decimal" value="50">
+            </label>
+            <label>
+              <span>自然科學班人均堂收</span>
+              <input id="payrollSettlementScienceRate" inputmode="numeric" value="900">
+            </label>
+            <label>
+              <span>明軒保底 / 堂</span>
+              <input id="payrollSettlementMinBase" inputmode="numeric" value="4500">
+            </label>
+            <label>
+              <span>明軒門檻人數</span>
+              <input id="payrollSettlementMinThreshold" inputmode="numeric" value="15">
+            </label>
+            <label>
+              <span>明軒人數津貼</span>
+              <input id="payrollSettlementMinBonus" inputmode="numeric" value="300">
+            </label>
+            <label>
+              <span>鐘點 / 小時</span>
+              <input id="payrollSettlementHourlyRate" inputmode="numeric" value="800">
+            </label>
+            <label>
+              <span>鐘點每堂時數</span>
+              <input id="payrollSettlementHours" inputmode="decimal" value="3">
+            </label>
+            <div class="actions wide">
+              <button class="primary" id="buildPayrollSettlement" type="button">產生月底結算</button>
+              <button class="ghost" id="printPayrollSettlement" type="button" disabled>列印 / 存 PDF</button>
+            </div>
+          </div>
+          <section class="import-summary" id="payrollSettlementSummary"></section>
+          <div class="split-view settlement-split">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>老師</th>
+                    <th>計算方式</th>
+                    <th>課程數</th>
+                    <th>堂數 / 時數</th>
+                    <th>人次</th>
+                    <th>應付小計</th>
+                  </tr>
+                </thead>
+                <tbody id="payrollSettlementTeacherRows"></tbody>
+              </table>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>老師</th>
+                    <th>班級 / 課程</th>
+                    <th>堂數</th>
+                    <th>人數變化</th>
+                    <th>計算方式</th>
+                    <th>小計</th>
+                    <th>狀態</th>
+                  </tr>
+                </thead>
+                <tbody id="payrollSettlementClassRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
         <section class="form-grid payroll-builder">
           <label>
             <span>試算月份</span>
