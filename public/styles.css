@@ -1,16 +1,16 @@
 :root {
   color-scheme: light;
-  --bg: #f5f7f4;
+  --bg: #f4f8fb;
   --surface: #ffffff;
-  --surface-2: #eef3eb;
-  --line: #d8e0d4;
-  --text: #182019;
-  --muted: #5f6f61;
-  --brand: #216247;
-  --brand-2: #e6f2eb;
-  --accent: #b7552d;
+  --surface-2: #e9f3f8;
+  --line: #c9dbe4;
+  --text: #14232e;
+  --muted: #5c6f7b;
+  --brand: #237fa6;
+  --brand-2: #e3f3f9;
+  --accent: #1d6f95;
   --danger: #9d2d2d;
-  --shadow: 0 18px 48px rgba(24, 32, 25, 0.08);
+  --shadow: 0 18px 48px rgba(20, 35, 46, 0.08);
 }
 
 * {
@@ -141,7 +141,7 @@ h2 {
 
 .status-pill {
   background: var(--brand-2);
-  border: 1px solid #c7decf;
+  border: 1px solid #b8d8e5;
   border-radius: 999px;
   color: var(--brand);
   font-size: 0.9rem;
@@ -236,7 +236,7 @@ input,
 select,
 textarea {
   background: #fff;
-  border: 1px solid #cfd8cd;
+  border: 1px solid #c8d7df;
   border-radius: 8px;
   color: var(--text);
   min-height: 42px;
@@ -249,7 +249,7 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(33, 98, 71, 0.12);
+  box-shadow: 0 0 0 3px rgba(35, 127, 166, 0.14);
 }
 
 textarea {
@@ -320,7 +320,7 @@ textarea {
 
 .result-band {
   align-items: flex-start;
-  background: #182019;
+  background: #15364b;
   border-radius: 8px;
   color: white;
   display: flex;
@@ -331,7 +331,7 @@ textarea {
 }
 
 .result-band .eyebrow {
-  color: #f2b286;
+  color: #98d7ef;
 }
 
 .result-band h2 {
@@ -339,7 +339,7 @@ textarea {
 }
 
 .warnings {
-  color: #ffe0c9;
+  color: #e2f7ff;
   font-size: 0.92rem;
   line-height: 1.6;
   max-width: 620px;
@@ -373,7 +373,7 @@ td {
 }
 
 th {
-  background: #f0f4ee;
+  background: #eef6fa;
   color: var(--muted);
   font-size: 0.82rem;
   white-space: nowrap;
@@ -586,7 +586,7 @@ td.money {
 
 .timeline-item {
   border-left: 3px solid var(--brand);
-  background: #f8faf7;
+  background: #f8fbfd;
   border-radius: 0 8px 8px 0;
   padding: 9px 10px;
 }
@@ -642,7 +642,7 @@ td.money {
 }
 
 tr.is-selected td {
-  background: #f4faf6;
+  background: #f4fafe;
 }
 
 .small {

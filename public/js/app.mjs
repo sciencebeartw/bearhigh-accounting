@@ -4,6 +4,7 @@ import {
   getRedirectResult,
   GoogleAuthProvider,
   onAuthStateChanged,
+  signInWithPopup,
   signInWithRedirect,
   signOut
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
@@ -1057,6 +1058,22 @@ function setCloudStatus(message) {
   elements.cloudStatus.textContent = message;
 }
 
+function authErrorMessage(error) {
+  const code = error?.code || '';
+  if (code === 'auth/unauthorized-domain') return '這個網址尚未加入 Firebase Auth 授權網域';
+  if (code === 'auth/operation-not-allowed') return 'Firebase 尚未開啟 Google 登入';
+  if (code === 'auth/popup-blocked') return '瀏覽器封鎖彈出登入，改用跳轉登入';
+  if (code === 'auth/popup-closed-by-user') return '你關閉了 Google 登入視窗';
+  if (code === 'auth/network-request-failed') return '網路連線失敗，請重新整理後再登入';
+  return `登入失敗：${code || error?.message || '未知錯誤'}`;
+}
+
+function showAuthError(error) {
+  const message = authErrorMessage(error);
+  setCloudStatus(message);
+  elements.loginGateStatus.textContent = message;
+}
+
 function renderAuth(user) {
   currentUser = user;
   const email = user?.email || '';
@@ -1832,7 +1849,15 @@ document.querySelector('#clearAll').addEventListener('click', () => {
 function startGoogleSignIn() {
   setCloudStatus('前往 Google 登入');
   elements.loginGateStatus.textContent = '前往 Google 登入';
-  signInWithRedirect(auth, googleProvider);
+  signInWithPopup(auth, googleProvider).catch((error) => {
+    if (['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment'].includes(error?.code)) {
+      elements.loginGateStatus.textContent = '改用跳轉登入';
+      setCloudStatus('改用跳轉登入');
+      return signInWithRedirect(auth, googleProvider);
+    }
+    showAuthError(error);
+    return null;
+  });
 }
 
 elements.signInGoogle.addEventListener('click', () => {
@@ -1848,8 +1873,7 @@ elements.signOutGoogle.addEventListener('click', async () => {
 });
 
 getRedirectResult(auth).catch((error) => {
-  setCloudStatus(`登入失敗：${error.code || error.message}`);
-  elements.loginGateStatus.textContent = `登入失敗：${error.code || error.message}`;
+  showAuthError(error);
 });
 
 onAuthStateChanged(auth, (user) => {
