@@ -293,6 +293,33 @@
           </div>
         </section>
 
+        <section class="section-block">
+          <div class="section-heading">
+            <div>
+              <h2>月結檢查</h2>
+              <p class="muted">先看本月哪些班已可結算、哪些班還缺堂次日期，避免月底漏算。</p>
+            </div>
+          </div>
+          <section class="import-summary" id="payrollCloseSummary"></section>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>狀態</th>
+                  <th>來源</th>
+                  <th>老師</th>
+                  <th>班級 / 課程</th>
+                  <th>學生</th>
+                  <th>堂次</th>
+                  <th>本月異動</th>
+                  <th>提醒</th>
+                </tr>
+              </thead>
+              <tbody id="payrollCloseRows"></tbody>
+            </table>
+          </div>
+        </section>
+
         <section class="form-grid payroll-builder">
           <label>
             <span>試算月份</span>
@@ -668,6 +695,31 @@
                 </tr>
               </thead>
               <tbody id="manualCourseRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="section-block">
+          <div class="section-heading">
+            <div>
+              <h2>匯入 / 網頁資料比對</h2>
+              <p class="muted">用來檢查短期雙軌資料：Numbers 匯入作底稿，網頁新增作日常紀錄。</p>
+            </div>
+          </div>
+          <section class="import-summary" id="manualImportCompareSummary"></section>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>狀態</th>
+                  <th>學生</th>
+                  <th>網頁分頁</th>
+                  <th>網頁課程</th>
+                  <th>對到的匯入資料</th>
+                  <th>提醒</th>
+                </tr>
+              </thead>
+              <tbody id="manualImportCompareRows"></tbody>
             </table>
           </div>
         </section>

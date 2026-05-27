@@ -818,6 +818,28 @@ td.money {
   font-weight: 800;
 }
 
+.status-tag {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.2;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.status-ok {
+  background: #e3f3f9;
+  border: 1px solid #b9dbe8;
+  color: #145b78;
+}
+
+.status-warn {
+  background: #fff4df;
+  border: 1px solid #ecc47d;
+  color: #7d4a00;
+}
+
 .inline-risk {
   border-radius: 999px;
   display: inline-block;

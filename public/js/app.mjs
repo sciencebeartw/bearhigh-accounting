@@ -88,6 +88,8 @@ const elements = {
   payrollCalcSessions: document.querySelector('#payrollCalcSessions'),
   payrollCalcShare: document.querySelector('#payrollCalcShare'),
   payrollCalcTeacher: document.querySelector('#payrollCalcTeacher'),
+  payrollCloseRows: document.querySelector('#payrollCloseRows'),
+  payrollCloseSummary: document.querySelector('#payrollCloseSummary'),
   payrollSettlementClassRows: document.querySelector('#payrollSettlementClassRows'),
   payrollSettlementHeadRate: document.querySelector('#payrollSettlementHeadRate'),
   payrollSettlementHourlyRate: document.querySelector('#payrollSettlementHourlyRate'),
@@ -174,6 +176,8 @@ const elements = {
   manualEnrollmentCourse: document.querySelector('#manualEnrollmentCourse'),
   manualEnrollmentForm: document.querySelector('#manualEnrollmentForm'),
   manualEnrollmentStudent: document.querySelector('#manualEnrollmentStudent'),
+  manualImportCompareRows: document.querySelector('#manualImportCompareRows'),
+  manualImportCompareSummary: document.querySelector('#manualImportCompareSummary'),
   manualMasterRows: document.querySelector('#manualMasterRows'),
   manualStudentCohort: document.querySelector('#manualStudentCohort'),
   manualStudentForm: document.querySelector('#manualStudentForm'),
@@ -563,6 +567,147 @@ function manualEnrollmentForStudentCourse(studentId, courseId) {
   return (state.manualCourseEnrollments || []).find((enrollment) => (
     enrollment.studentId === studentId && enrollment.courseId === courseId
   )) || null;
+}
+
+function normalizedCompareText(value) {
+  return String(value || '').replace(/\s+/g, '').trim();
+}
+
+function studentPhones(student) {
+  const profile = student?.profile || {};
+  return new Set([profile.motherPhone, profile.fatherPhone, profile.phone, profile.phone1]
+    .map(normalizedCompareText)
+    .filter(Boolean));
+}
+
+function studentsLikelySame(left, right) {
+  const leftName = normalizedCompareText(studentName(left));
+  const rightName = normalizedCompareText(studentName(right));
+  if (!leftName || leftName !== rightName) return false;
+  const leftSchool = normalizedCompareText(studentSchool(left));
+  const rightSchool = normalizedCompareText(studentSchool(right));
+  if (leftSchool && rightSchool && leftSchool === rightSchool) return true;
+  const rightPhones = studentPhones(right);
+  return Array.from(studentPhones(left)).some((phone) => rightPhones.has(phone));
+}
+
+function studentCourseSubjects(student) {
+  return new Set((student?.selectedCourses || [])
+    .map((course) => canonicalSubject(courseLabel(course)))
+    .filter(Boolean));
+}
+
+function manualCourseSubject(course) {
+  return canonicalSubject(`${course?.courseName || ''} ${course?.teacherName || ''} ${course?.subject || ''}`);
+}
+
+function manualImportCompareRows() {
+  const students = getStudents();
+  const { studentsById } = buildStudentIndexes();
+  const importedStudents = students.filter((student) => student.source !== 'manual');
+  const rows = [];
+
+  for (const enrollment of state.manualCourseEnrollments || []) {
+    const student = studentsById.get(enrollment.studentId);
+    if (!student) continue;
+    const course = manualCoursesById().get(enrollment.courseId);
+    const courseSubject = manualCourseSubject(course);
+    const sameNameImported = importedStudents.filter((candidate) => normalizedCompareText(studentName(candidate)) === normalizedCompareText(studentName(student)));
+    const samePersonImported = sameNameImported.filter((candidate) => studentsLikelySame(student, candidate));
+    const courseMatches = sameNameImported.filter((candidate) => studentCourseSubjects(candidate).has(courseSubject));
+    let status = '網頁新增';
+    let matched = '';
+    let note = '匯入資料尚未看到同名學生，可視為新網頁資料。';
+
+    if (student.source !== 'manual') {
+      status = '匯入生加網頁課';
+      matched = `${student.sheet} 列 ${student.row}`;
+      note = '這筆網頁課程直接掛在匯入學生上，適合日常新增科目。';
+    } else if (sameNameImported.length > 1 && !samePersonImported.length) {
+      status = '同名需確認';
+      matched = sameNameImported.map((candidate) => `${candidate.sheet} 列 ${candidate.row}`).slice(0, 3).join('、');
+      note = '匯入資料有多位同名學生，請用學校或電話確認是否同一人。';
+    } else if (courseMatches.length) {
+      status = '疑似重複報名';
+      matched = courseMatches.map((candidate) => `${candidate.sheet} 列 ${candidate.row}`).slice(0, 3).join('、');
+      note = '同名匯入學生已有相同科目，請確認是不是把 Numbers 既有報名又在網頁新增一次。';
+    } else if (samePersonImported.length) {
+      status = '疑似同人新科';
+      matched = samePersonImported.map((candidate) => `${candidate.sheet} 列 ${candidate.row}`).slice(0, 3).join('、');
+      note = '看起來是同一位學生，但這門網頁課程在匯入資料中未看到，可作為新增科目。';
+    } else if (sameNameImported.length === 1) {
+      status = '同名可參考';
+      matched = `${sameNameImported[0].sheet} 列 ${sameNameImported[0].row}`;
+      note = '匯入資料有一位同名學生，但學校/電話未完全對上，請人工確認。';
+    }
+
+    rows.push({
+      status,
+      studentName: studentName(student),
+      manualSheet: student.sheet || '',
+      manualCourse: course ? manualCourseLabel(course) : enrollment.courseName || '',
+      matched,
+      note
+    });
+  }
+
+  const enrolledManualStudentIds = new Set((state.manualCourseEnrollments || []).map((enrollment) => enrollment.studentId));
+  for (const student of state.manualStudents || []) {
+    if (enrolledManualStudentIds.has(student.id)) continue;
+    const sameNameImported = importedStudents.filter((candidate) => normalizedCompareText(studentName(candidate)) === normalizedCompareText(studentName(student)));
+    rows.push({
+      status: sameNameImported.length ? '同名未報課' : '新網頁學生',
+      studentName: studentName(student),
+      manualSheet: student.sheet || '',
+      manualCourse: '尚未加入科目',
+      matched: sameNameImported.map((candidate) => `${candidate.sheet} 列 ${candidate.row}`).slice(0, 3).join('、'),
+      note: sameNameImported.length ? '只有新增學生，尚未新增科目；匯入資料有同名可對照。' : '網頁新增學生尚未加入科目。'
+    });
+  }
+
+  return rows.sort((a, b) => {
+    const order = {
+      '疑似重複報名': 0,
+      '同名需確認': 1,
+      '同名可參考': 2,
+      '疑似同人新科': 3,
+      '匯入生加網頁課': 4,
+      '網頁新增': 5,
+      '新網頁學生': 6,
+      '同名未報課': 7
+    };
+    return (order[a.status] ?? 9) - (order[b.status] ?? 9) ||
+      a.studentName.localeCompare(b.studentName, 'zh-Hant') ||
+      a.manualCourse.localeCompare(b.manualCourse, 'zh-Hant');
+  });
+}
+
+function renderManualImportCompare() {
+  const rows = manualImportCompareRows();
+  const issueCount = rows.filter((row) => ['疑似重複報名', '同名需確認', '同名可參考'].includes(row.status)).length;
+  elements.manualImportCompareSummary.innerHTML = [
+    summaryCell('匯入學生', (state.importSnapshot?.students || []).length),
+    summaryCell('網頁學生', state.manualStudents.length),
+    summaryCell('網頁報名', state.manualCourseEnrollments.length),
+    summaryCell('需確認', issueCount)
+  ].join('');
+  elements.manualImportCompareRows.innerHTML = rows.length
+    ? rows.slice(0, 120).map((row) => `
+      <tr>
+        <td><span class="status-tag ${row.status === '疑似重複報名' || row.status.includes('確認') ? 'status-warn' : 'status-ok'}">${escapeHtml(row.status)}</span></td>
+        <td>${escapeHtml(row.studentName)}</td>
+        <td>${escapeHtml(row.manualSheet)}</td>
+        <td>${escapeHtml(row.manualCourse)}</td>
+        <td>${escapeHtml(row.matched || '無')}</td>
+        <td>${escapeHtml(row.note)}</td>
+      </tr>
+    `).join('')
+    : emptyRow(6);
+  if (rows.length > 120) {
+    elements.manualImportCompareRows.insertAdjacentHTML('beforeend', `
+      <tr><td colspan="6" class="empty">另有 ${formatMoney(rows.length - 120)} 筆，先顯示最需要確認的前 120 筆。</td></tr>
+    `);
+  }
 }
 
 function receivableIdForEnrollment(enrollmentId) {
@@ -1977,6 +2122,87 @@ function payrollMethodLabel(preview) {
   return `分潤 ${formatMoney(preview.sharePercent)}%`;
 }
 
+function payrollBlockEvents(block, month) {
+  return (state.membershipEvents || [])
+    .filter((event) => (
+      (!month || String(event.date || event.month || '').startsWith(month)) &&
+      eventMatchesCourseName(event, block.title || '')
+    ))
+    .sort((a, b) => `${a.date || ''}-${a.sessionNo || ''}`.localeCompare(`${b.date || ''}-${b.sessionNo || ''}`));
+}
+
+function payrollCloseRows(month) {
+  const blocks = getTeacherRosterBlocks();
+  const rows = blocks.map((block) => {
+    const sessions = payrollSettlementSessionRows(block, month);
+    const events = payrollBlockEvents(block, month);
+    const status = sessions.length ? '可結算' : '缺堂次';
+    const rowCount = block.rowCount ?? (block.rows || []).length;
+    return {
+      status,
+      source: block.source === 'manualCourse' ? '網頁' : '匯入',
+      teacherName: payrollSettlementTeacherName(block),
+      courseName: block.title || '',
+      rowCount,
+      sessionCount: sessions.length,
+      eventCount: events.length,
+      note: sessions.length
+        ? (events.length ? `${formatMoney(events.length)} 筆進退班，結算時會套用。` : '可進月底結算。')
+        : '尚未儲存本月上課日期，不會進薪資總表。'
+    };
+  });
+
+  const payrollOnlySheets = (state.importSnapshot?.teacherSheets || [])
+    .filter((sheet) => (sheet.payrollBlocks || []).length && !(sheet.rosterBlocks || []).length)
+    .map((sheet) => ({
+      status: '需手動',
+      source: '匯入薪資歷史',
+      teacherName: sheet.summary?.sheet || sheet.sheet || '未命名分頁',
+      courseName: '有薪資歷史，但沒有匯入老師名單',
+      rowCount: 0,
+      sessionCount: 0,
+      eventCount: 0,
+      note: '需用網頁新增課程 / 鐘點制處理，無法從匯入 roster 自動算人數。'
+    }));
+
+  return [...rows, ...payrollOnlySheets].sort((a, b) => {
+    const order = { '需手動': 0, '缺堂次': 1, '可結算': 2 };
+    return (order[a.status] ?? 9) - (order[b.status] ?? 9) ||
+      a.teacherName.localeCompare(b.teacherName, 'zh-Hant') ||
+      a.courseName.localeCompare(b.courseName, 'zh-Hant');
+  });
+}
+
+function renderPayrollCloseCheck() {
+  const month = elements.payrollSettlementMonth.value || elements.payrollCalcMonth.value || currentMonthIso();
+  const rows = payrollCloseRows(month);
+  const readyCount = rows.filter((row) => row.status === '可結算').length;
+  const missingCount = rows.filter((row) => row.status === '缺堂次').length;
+  const manualCount = rows.filter((row) => row.status === '需手動').length;
+  const eventCount = rows.reduce((sum, row) => sum + row.eventCount, 0);
+  elements.payrollCloseSummary.innerHTML = [
+    `<div class="summary-cell"><strong>${escapeHtml(month)}</strong><span>月份</span></div>`,
+    summaryCell('可結算班級', readyCount),
+    summaryCell('缺堂次班級', missingCount),
+    summaryCell('需手動處理', manualCount),
+    summaryCell('本月異動', eventCount)
+  ].join('');
+  elements.payrollCloseRows.innerHTML = rows.length
+    ? rows.map((row) => `
+      <tr>
+        <td><span class="status-tag ${row.status === '可結算' ? 'status-ok' : 'status-warn'}">${escapeHtml(row.status)}</span></td>
+        <td>${escapeHtml(row.source)}</td>
+        <td>${escapeHtml(row.teacherName)}</td>
+        <td>${escapeHtml(row.courseName)}</td>
+        <td class="money">${formatMoney(row.rowCount)}</td>
+        <td class="money">${formatMoney(row.sessionCount)}</td>
+        <td class="money">${formatMoney(row.eventCount)}</td>
+        <td>${escapeHtml(row.note)}</td>
+      </tr>
+    `).join('')
+    : emptyRow(8);
+}
+
 function payrollSettlementSettings() {
   return {
     month: elements.payrollSettlementMonth.value || elements.payrollCalcMonth.value || currentMonthIso(),
@@ -3177,9 +3403,11 @@ function renderAll() {
   renderPayroll();
   renderPayrollPreview();
   renderPayrollSettlement();
+  renderPayrollCloseCheck();
   renderAccounting();
   renderRecords();
   renderManualCourses();
+  renderManualImportCompare();
   renderStudentCenter();
   renderStudentMatrix();
   renderStudentOverviews();
@@ -3480,6 +3708,7 @@ elements.payrollForm.addEventListener('submit', async (event) => {
 
 elements.payrollSessionDates.addEventListener('input', () => {
   updatePayrollSessionSummary();
+  renderPayrollCloseCheck();
   if (!payrollPreview) return;
   payrollPreview = buildPayrollPreview();
   renderPayrollPreview();
@@ -3512,6 +3741,7 @@ elements.savePayrollSessionPlan.addEventListener('click', async () => {
     payrollSettlement = buildPayrollSettlementData();
     renderPayrollSettlement();
   }
+  renderPayrollCloseCheck();
   try {
     await saveCloudRecord('courseSessionPlans', record, key);
   } catch (error) {
@@ -3547,6 +3777,7 @@ elements.savePayrollEvent.addEventListener('click', async () => {
     payrollSettlement = buildPayrollSettlementData();
     renderPayrollSettlement();
   }
+  renderPayrollCloseCheck();
 });
 
 elements.previewPayrollRun.addEventListener('click', () => {
@@ -3580,6 +3811,7 @@ elements.previewPayrollRun.addEventListener('click', () => {
       updatePayrollSessionSummary();
     }
     renderPayrollQuickEvents();
+    renderPayrollCloseCheck();
     if (!payrollPreview) return;
     payrollPreview = buildPayrollPreview();
     renderPayrollPreview();
@@ -3657,6 +3889,7 @@ elements.exportPayrollPreviewXls.addEventListener('click', () => {
 elements.buildPayrollSettlement.addEventListener('click', () => {
   payrollSettlement = buildPayrollSettlementData();
   renderPayrollSettlement();
+  renderPayrollCloseCheck();
 });
 
 elements.printPayrollSettlement.addEventListener('click', () => {
@@ -3687,6 +3920,7 @@ elements.printPayrollSettlement.addEventListener('click', () => {
   elements.payrollSettlementShare
 ].forEach((element) => {
   element.addEventListener('change', () => {
+    renderPayrollCloseCheck();
     if (!payrollSettlement) return;
     payrollSettlement = buildPayrollSettlementData();
     renderPayrollSettlement();
