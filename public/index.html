@@ -47,7 +47,7 @@
         <button class="tab" data-tab="events" type="button">異動</button>
         <button class="tab" data-tab="payroll" type="button">薪資</button>
         <button class="tab" data-tab="students" type="button">學生</button>
-        <button class="tab" data-tab="accounting" type="button">會計</button>
+        <button class="tab" data-tab="accounting" type="button">收款</button>
         <button class="tab" data-tab="import" type="button">匯入</button>
         <button class="tab" data-tab="records" type="button">紀錄</button>
       </nav>
@@ -733,10 +733,22 @@
         <section class="section-block">
           <div class="section-heading">
             <div>
-              <h2>應收帳款</h2>
-              <p class="muted">學生加入科目後會自動產生應收；部分收款、催收狀態與作廢都在這裡處理。</p>
+              <h2>收款流程</h2>
+              <p class="muted">照 Numbers 的工作方式：先建立學生、學期與科目，再用本頁記錄合報優惠、抵用券、分期付款與退班退費。</p>
             </div>
-            <button class="ghost" id="exportReceivablesCsv" type="button">匯出應收 CSV</button>
+          </div>
+          <div class="notice-line">
+            目前定價口徑：一科 24 堂 21600，兩科 42200（平均每科 21100），三科 61800（平均每科 20600）；舊年度可直接用科目應收調整或匯入底稿保留原金額。
+          </div>
+        </section>
+
+        <section class="section-block">
+          <div class="section-heading">
+            <div>
+              <h2>目前收款狀態</h2>
+              <p class="muted">看誰已收、誰還沒收、分期剩多少；新增學生與科目後會自動出現在這裡。</p>
+            </div>
+            <button class="ghost" id="exportReceivablesCsv" type="button">匯出收款狀態 CSV</button>
           </div>
           <div class="table-wrap">
             <table>
@@ -745,7 +757,7 @@
                   <th>學生</th>
                   <th>課程</th>
                   <th>到期日</th>
-                  <th>應收</th>
+                  <th>科目淨額</th>
                   <th>已收</th>
                   <th>未收</th>
                   <th>狀態</th>
@@ -758,7 +770,7 @@
           </div>
         </section>
 
-        <section class="section-block">
+        <section class="section-block" hidden>
           <div class="section-heading">
             <div>
               <h2>記一筆收款</h2>
@@ -788,7 +800,7 @@
               </select>
             </label>
             <label>
-              <span>入帳科目</span>
+              <span>收款去向</span>
               <select name="assetAccountId" id="paymentAssetAccount"></select>
             </label>
             <label class="wide">
@@ -804,8 +816,119 @@
         <section class="section-block">
           <div class="section-heading">
             <div>
-              <h2>收款流水帳</h2>
-              <p class="muted">作廢收款會保留原紀錄並新增一筆負數沖銷。</p>
+              <h2>學生收款</h2>
+              <p class="muted">用在合報、抵用券與分期付款；優惠會平均分到勾選科目，收款再依各科淨額比例分攤。</p>
+            </div>
+          </div>
+          <form class="form-grid compact-form" id="batchPaymentForm">
+            <label>
+              <span>學生</span>
+              <select name="studentId" id="batchPaymentStudent"></select>
+            </label>
+            <label>
+              <span>收款日期</span>
+              <input name="date" type="date" required>
+            </label>
+            <label>
+              <span>本次實收</span>
+              <input name="paidAmount" inputmode="numeric" required placeholder="例：42200，可少於總額作分期">
+            </label>
+            <label>
+              <span>合報優惠</span>
+              <input name="packageDiscount" inputmode="numeric" placeholder="例：兩科填 1000，三科填 3000">
+            </label>
+            <label>
+              <span>抵用券</span>
+              <input name="voucherAmount" inputmode="numeric" placeholder="例：3000">
+            </label>
+            <label>
+              <span>付款方式</span>
+              <select name="method">
+                <option value="轉帳">轉帳</option>
+                <option value="現金">現金</option>
+                <option value="刷卡">刷卡</option>
+                <option value="其他">其他</option>
+              </select>
+            </label>
+            <label>
+              <span>收款去向</span>
+              <select name="assetAccountId" id="batchPaymentAssetAccount"></select>
+            </label>
+            <label>
+              <span>分期備註</span>
+              <input name="installmentNote" autocomplete="off" placeholder="例：第一期 / 尾款">
+            </label>
+            <div class="wide">
+              <span class="field-title">本次收款科目</span>
+              <div id="batchPaymentReceivables" class="check-grid"></div>
+            </div>
+            <div class="wide" id="batchPaymentPreview"></div>
+            <div class="actions wide">
+              <button class="primary" type="submit">分攤並記入收款</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="section-block">
+          <div class="section-heading">
+            <div>
+              <h2>退班退費</h2>
+              <p class="muted">一堂以原價計，依已上堂數計算應留收入，剩餘退回並寫入負數流水。</p>
+            </div>
+          </div>
+          <form class="form-grid compact-form" id="withdrawalRefundForm">
+            <label>
+              <span>應收 / 科目</span>
+              <select name="receivableId" id="refundReceivable"></select>
+            </label>
+            <label>
+              <span>退班日期</span>
+              <input name="date" type="date" required>
+            </label>
+            <label>
+              <span>從第幾堂退</span>
+              <input name="withdrawSessionNo" inputmode="numeric" placeholder="例：7">
+            </label>
+            <label>
+              <span>已上堂數</span>
+              <input name="sessionsTaken" inputmode="numeric" placeholder="例：6">
+            </label>
+            <label>
+              <span>總堂數</span>
+              <input name="totalSessions" inputmode="numeric" placeholder="例：24">
+            </label>
+            <label>
+              <span>每堂原價</span>
+              <input name="listPricePerSession" inputmode="numeric" placeholder="可自動推算">
+            </label>
+            <label>
+              <span>退費金額</span>
+              <input name="refundAmount" inputmode="numeric" placeholder="空白則自動計算">
+            </label>
+            <label>
+              <span>退費方式</span>
+              <select name="method">
+                <option value="轉帳退費">轉帳退費</option>
+                <option value="現金退費">現金退費</option>
+                <option value="保留抵用">保留抵用</option>
+              </select>
+            </label>
+            <label class="wide">
+              <span>備註</span>
+              <input name="note" autocomplete="off">
+            </label>
+            <div class="wide" id="refundPreview"></div>
+            <div class="actions wide">
+              <button class="danger" type="submit">記入退班退費</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="section-block">
+          <div class="section-heading">
+            <div>
+              <h2>收款 / 退費紀錄</h2>
+              <p class="muted">這裡只看實際現金或匯款流動；作廢收款會保留原紀錄並新增負數沖銷。</p>
             </div>
             <button class="ghost" id="exportPaymentLedgerCsv" type="button">匯出流水 CSV</button>
           </div>
@@ -828,7 +951,7 @@
           </div>
         </section>
 
-        <section class="section-block">
+        <section class="section-block" hidden>
           <div class="section-heading">
             <div>
               <h2>正式報表</h2>
@@ -856,7 +979,7 @@
           </div>
         </section>
 
-        <section class="section-block">
+        <section class="section-block" hidden>
           <div class="section-heading">
             <div>
               <h2>會計科目表</h2>
@@ -878,7 +1001,7 @@
           </div>
         </section>
 
-        <section class="section-block">
+        <section class="section-block" hidden>
           <div class="section-heading">
             <div>
               <h2>審計紀錄</h2>

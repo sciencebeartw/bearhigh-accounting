@@ -116,6 +116,11 @@ const elements = {
   accountingSummary: document.querySelector('#accountingSummary'),
   agingReport: document.querySelector('#agingReport'),
   auditLogRows: document.querySelector('#auditLogRows'),
+  batchPaymentAssetAccount: document.querySelector('#batchPaymentAssetAccount'),
+  batchPaymentForm: document.querySelector('#batchPaymentForm'),
+  batchPaymentPreview: document.querySelector('#batchPaymentPreview'),
+  batchPaymentReceivables: document.querySelector('#batchPaymentReceivables'),
+  batchPaymentStudent: document.querySelector('#batchPaymentStudent'),
   cashFlowReport: document.querySelector('#cashFlowReport'),
   eventRows: document.querySelector('#eventRows'),
   exportAccountingReportsCsv: document.querySelector('#exportAccountingReportsCsv'),
@@ -129,7 +134,10 @@ const elements = {
   paymentReceivable: document.querySelector('#paymentReceivable'),
   profitLossReport: document.querySelector('#profitLossReport'),
   receivableRows: document.querySelector('#receivableRows'),
+  refundPreview: document.querySelector('#refundPreview'),
+  refundReceivable: document.querySelector('#refundReceivable'),
   tuitionRecords: document.querySelector('#tuitionRecords'),
+  withdrawalRefundForm: document.querySelector('#withdrawalRefundForm'),
   payrollRecords: document.querySelector('#payrollRecords'),
   importStatus: document.querySelector('#importStatus'),
   importSummary: document.querySelector('#importSummary'),
@@ -2361,6 +2369,213 @@ function syncAccountingForms() {
   elements.paymentAssetAccount.innerHTML = assetAccounts
     .map((account) => `<option value="${escapeHtml(account.id)}">${escapeHtml(account.name)}</option>`)
     .join('');
+  elements.batchPaymentAssetAccount.innerHTML = elements.paymentAssetAccount.innerHTML;
+
+  const studentsWithReceivables = Array.from(new Map((state.receivables || [])
+    .filter((receivable) => receivable.status !== 'void')
+    .map((receivable) => [receivable.studentId || receivable.studentName, receivable])).values())
+    .sort((a, b) => String(a.studentName || '').localeCompare(String(b.studentName || ''), 'zh-Hant'));
+  const selectedStudent = elements.batchPaymentStudent.value;
+  elements.batchPaymentStudent.innerHTML = studentsWithReceivables.length
+    ? studentsWithReceivables.map((receivable) => `<option value="${escapeHtml(receivable.studentId || receivable.studentName)}">${escapeHtml(receivable.studentName)}</option>`).join('')
+    : '<option value="">尚無學生應收</option>';
+  elements.batchPaymentStudent.value = studentsWithReceivables.some((receivable) => (receivable.studentId || receivable.studentName) === selectedStudent)
+    ? selectedStudent
+    : (studentsWithReceivables[0]?.studentId || studentsWithReceivables[0]?.studentName || '');
+  elements.batchPaymentStudent.disabled = !studentsWithReceivables.length;
+
+  const selectedRefund = elements.refundReceivable.value;
+  const refundable = (state.receivables || [])
+    .filter((receivable) => receivable.status !== 'void' && !receivable.withdrawal && parseNumber(receivable.paidAmount) > 0)
+    .sort((a, b) => `${a.studentName || ''} ${a.courseName || ''}`.localeCompare(`${b.studentName || ''} ${b.courseName || ''}`, 'zh-Hant'));
+  elements.refundReceivable.innerHTML = refundable.length
+    ? refundable.map((receivable) => `<option value="${escapeHtml(receivable.id)}">${escapeHtml(receivable.studentName)}｜${escapeHtml(receivable.courseName)}｜已收 ${formatMoney(receivable.paidAmount)}</option>`).join('')
+    : '<option value="">尚無可退費收款</option>';
+  elements.refundReceivable.value = refundable.some((receivable) => receivable.id === selectedRefund) ? selectedRefund : (refundable[0]?.id || '');
+  elements.refundReceivable.disabled = !refundable.length;
+  renderBatchPaymentChoices();
+  renderRefundPreview();
+}
+
+function receivablesForBatchStudent() {
+  const studentKey = elements.batchPaymentStudent.value;
+  if (!studentKey) return [];
+  return (state.receivables || [])
+    .filter((receivable) => (
+      receivable.status !== 'void' &&
+      (receivable.studentId === studentKey || (!receivable.studentId && receivable.studentName === studentKey))
+    ))
+    .sort((a, b) => String(a.courseName || '').localeCompare(String(b.courseName || ''), 'zh-Hant'));
+}
+
+function selectedBatchReceivables() {
+  const selectedIds = Array.from(elements.batchPaymentReceivables.querySelectorAll('input[name="batchReceivable"]:checked'))
+    .map((input) => input.value);
+  return receivablesForBatchStudent().filter((receivable) => selectedIds.includes(receivable.id));
+}
+
+function distributeAmount(total, weights) {
+  const roundedTotal = Math.round(parseNumber(total));
+  const sum = weights.reduce((value, item) => value + Math.max(0, parseNumber(item.weight)), 0);
+  if (!sum || roundedTotal === 0) return weights.map((item) => ({ ...item, amount: 0 }));
+  let used = 0;
+  return weights.map((item, index) => {
+    const amount = index === weights.length - 1
+      ? roundedTotal - used
+      : Math.round(roundedTotal * (Math.max(0, parseNumber(item.weight)) / sum));
+    used += amount;
+    return { ...item, amount };
+  });
+}
+
+function distributeAmountEven(total, items) {
+  const roundedTotal = Math.round(parseNumber(total));
+  if (!items.length || roundedTotal === 0) return items.map((item) => ({ ...item, amount: 0 }));
+  const base = Math.trunc(roundedTotal / items.length);
+  let used = 0;
+  return items.map((item, index) => {
+    const amount = index === items.length - 1 ? roundedTotal - used : base;
+    used += amount;
+    return { ...item, amount };
+  });
+}
+
+function appendUniqueNotes(...parts) {
+  const seen = new Set();
+  return parts
+    .flatMap((part) => String(part || '').split('；'))
+    .map((part) => part.trim())
+    .filter((part) => {
+      if (!part || seen.has(part)) return false;
+      seen.add(part);
+      return true;
+    })
+    .join('；');
+}
+
+function batchPaymentPlan() {
+  const receivables = selectedBatchReceivables();
+  const data = Object.fromEntries(new FormData(elements.batchPaymentForm).entries());
+  const packageDiscount = Math.max(0, parseNumber(data.packageDiscount));
+  const voucherAmount = Math.max(0, parseNumber(data.voucherAmount));
+  const paidAmount = Math.max(0, parseNumber(data.paidAmount));
+  const discountInputTotal = packageDiscount + voucherAmount;
+  const discountShares = discountInputTotal
+    ? distributeAmountEven(discountInputTotal, receivables.map((receivable) => ({ receivable })))
+    : receivables.map((receivable) => ({
+      receivable,
+      amount: Math.max(0, parseNumber(receivable.discountAmount) || (parseNumber(receivable.originalAmount) - parseNumber(receivable.amount)))
+    }));
+  const netRows = receivables.map((receivable, index) => {
+    const discount = discountShares[index]?.amount || 0;
+    const originalAmount = Math.max(parseNumber(receivable.originalAmount), parseNumber(receivable.amount), parseNumber(receivable.balance));
+    const netAmount = Math.max(0, originalAmount - discount);
+    const alreadyPaid = postedPaymentAmountForReceivable(receivable.id);
+    const remaining = Math.max(0, netAmount - alreadyPaid);
+    return { receivable, discount, originalAmount, netAmount, alreadyPaid, remaining };
+  });
+  const remainingTotal = netRows.reduce((sum, row) => sum + row.remaining, 0);
+  const paidToApply = Math.min(paidAmount, remainingTotal);
+  const paymentShares = distributeAmount(paidToApply, netRows.map((row) => ({ row, weight: row.remaining })));
+  return {
+    date: data.date || todayIso(),
+    method: data.method || '轉帳',
+    assetAccountId: data.assetAccountId || 'bank_main',
+    installmentNote: String(data.installmentNote || '').trim(),
+    packageDiscount,
+    voucherAmount,
+    discountInputTotal,
+    paidAmount,
+    unappliedAmount: Math.max(0, paidAmount - paidToApply),
+    rows: netRows.map((row, index) => ({
+      ...row,
+      paymentAmount: Math.min(row.remaining, Math.max(0, paymentShares[index]?.amount || 0))
+    }))
+  };
+}
+
+function renderBatchPaymentChoices() {
+  if (!elements.batchPaymentReceivables) return;
+  const rows = receivablesForBatchStudent();
+  elements.batchPaymentReceivables.innerHTML = rows.length
+    ? rows.map((receivable) => `
+      <label class="check-card">
+        <input type="checkbox" name="batchReceivable" value="${escapeHtml(receivable.id)}" ${parseNumber(receivable.balance) > 0 ? 'checked' : ''}>
+        <span>
+          <strong>${escapeHtml(receivable.courseName)}</strong>
+          應收 ${formatMoney(receivable.amount)}，已收 ${formatMoney(receivable.paidAmount)}，未收 ${formatMoney(receivable.balance)}
+        </span>
+      </label>
+    `).join('')
+    : '<p class="empty">這位學生目前沒有科目應收。</p>';
+  renderBatchPaymentPreview();
+}
+
+function renderBatchPaymentPreview() {
+  if (!elements.batchPaymentPreview) return;
+  const plan = batchPaymentPlan();
+  if (!plan.rows.length) {
+    elements.batchPaymentPreview.innerHTML = '<div class="notice-line">請先選學生與本次收款科目。</div>';
+    return;
+  }
+  const netTotal = plan.rows.reduce((sum, row) => sum + row.netAmount, 0);
+  const alreadyPaidTotal = plan.rows.reduce((sum, row) => sum + row.alreadyPaid, 0);
+  const remainingTotal = plan.rows.reduce((sum, row) => sum + row.remaining, 0);
+  const paymentTotal = plan.rows.reduce((sum, row) => sum + row.paymentAmount, 0);
+  elements.batchPaymentPreview.innerHTML = `
+    <div class="notice-line">
+      淨應收 ${formatMoney(netTotal)}，已收 ${formatMoney(alreadyPaidTotal)}，剩餘未收 ${formatMoney(remainingTotal)}；本次分攤收款 ${formatMoney(paymentTotal)}${paymentTotal < remainingTotal ? '，會保留未收餘額作分期/尾款。' : '。'}${plan.unappliedAmount ? ` 本次實收超過未收 ${formatMoney(plan.unappliedAmount)}，不會分配到科目。` : ''}
+    </div>
+    <div class="mini-list">
+      ${plan.rows.map((row) => `
+        <div class="mini-row">
+          <strong>${escapeHtml(row.receivable.courseName)}</strong>
+          <span>優惠 ${formatMoney(row.discount)}，科目淨額 ${formatMoney(row.netAmount)}</span>
+          <span>本次收 ${formatMoney(row.paymentAmount)}</span>
+        </div>
+      `).join('')}
+    </div>
+    ${(plan.packageDiscount || plan.voucherAmount) ? '<p class="muted compact-note">合報優惠與抵用券採 Numbers 口徑，平均分到本次勾選的每一科。</p>' : ''}
+  `;
+}
+
+function refundPlan() {
+  const data = Object.fromEntries(new FormData(elements.withdrawalRefundForm).entries());
+  const receivable = receivableById(data.receivableId);
+  if (!receivable) return null;
+  const totalSessions = Math.max(1, Math.round(parseNumber(data.totalSessions)) || 24);
+  const withdrawSessionNo = Math.round(parseNumber(data.withdrawSessionNo));
+  const sessionsTaken = Math.max(0, Math.round(parseNumber(data.sessionsTaken)) || Math.max(0, withdrawSessionNo - 1));
+  const listPricePerSession = Math.max(0, parseNumber(data.listPricePerSession)) || Math.round(parseNumber(receivable.originalAmount || receivable.amount) / totalSessions);
+  const earnedAmount = Math.min(parseNumber(receivable.originalAmount || receivable.amount), sessionsTaken * listPricePerSession);
+  const computedRefund = Math.max(0, parseNumber(receivable.paidAmount) - earnedAmount);
+  const refundAmount = Math.round(parseNumber(data.refundAmount) || computedRefund);
+  return {
+    receivable,
+    date: data.date || todayIso(),
+    method: data.method || '轉帳退費',
+    withdrawSessionNo,
+    sessionsTaken,
+    totalSessions,
+    listPricePerSession,
+    earnedAmount,
+    refundAmount,
+    note: String(data.note || '').trim()
+  };
+}
+
+function renderRefundPreview() {
+  if (!elements.refundPreview) return;
+  const plan = refundPlan();
+  if (!plan) {
+    elements.refundPreview.innerHTML = '<div class="notice-line">請先選可退費科目。</div>';
+    return;
+  }
+  elements.refundPreview.innerHTML = `
+    <div class="notice-line">
+      ${escapeHtml(plan.receivable.studentName)}｜${escapeHtml(plan.receivable.courseName)}：已收 ${formatMoney(plan.receivable.paidAmount)}，已上 ${formatMoney(plan.sessionsTaken)} 堂，每堂原價 ${formatMoney(plan.listPricePerSession)}，應留收入 ${formatMoney(plan.earnedAmount)}，預計退 ${formatMoney(plan.refundAmount)}。
+    </div>
+  `;
 }
 
 function renderAccounting() {
@@ -3072,6 +3287,151 @@ elements.exportPayrollPreviewXls.addEventListener('click', () => {
     filenameSafe(payrollPreview.courseName)
   ].filter(Boolean).join('-');
   downloadFile(`${filename}.xls`, buildPayrollXls(payrollPreview), 'application/vnd.ms-excel;charset=utf-8');
+});
+
+elements.batchPaymentStudent.addEventListener('change', renderBatchPaymentChoices);
+elements.batchPaymentReceivables.addEventListener('change', renderBatchPaymentPreview);
+elements.batchPaymentForm.addEventListener('input', renderBatchPaymentPreview);
+elements.batchPaymentForm.addEventListener('change', renderBatchPaymentPreview);
+elements.batchPaymentForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const plan = batchPaymentPlan();
+  if (!plan.rows.length || plan.paidAmount <= 0) return;
+  const changedReceivables = [];
+  const payments = [];
+  for (const row of plan.rows) {
+    const receivable = row.receivable;
+    const before = { ...receivable };
+    receivable.originalAmount = row.originalAmount;
+    receivable.discountAmount = row.discount;
+    if (plan.discountInputTotal) {
+      receivable.packageDiscountAmount = Math.round(row.discount * (plan.packageDiscount / Math.max(1, plan.discountInputTotal)));
+      receivable.voucherAmount = row.discount - receivable.packageDiscountAmount;
+    } else {
+      receivable.packageDiscountAmount = parseNumber(receivable.packageDiscountAmount);
+      receivable.voucherAmount = parseNumber(receivable.voucherAmount);
+    }
+    receivable.amount = row.netAmount;
+    receivable.note = appendUniqueNotes(
+      receivable.note,
+      plan.packageDiscount ? `合報優惠分攤 ${formatMoney(receivable.packageDiscountAmount)}` : '',
+      plan.voucherAmount ? `抵用券分攤 ${formatMoney(receivable.voucherAmount)}` : '',
+      plan.installmentNote
+    );
+    if (row.paymentAmount > 0) {
+      const payment = {
+        id: nowId('payment'),
+        receivableId: receivable.id,
+        studentId: receivable.studentId,
+        studentName: receivable.studentName,
+        courseName: receivable.courseName,
+        date: plan.date,
+        amount: row.paymentAmount,
+        method: plan.method,
+        assetAccountId: plan.assetAccountId,
+        incomeAccountId: receivable.incomeAccountId || 'income_tuition',
+        note: [
+          '學生多科收款',
+          plan.installmentNote,
+          plan.packageDiscount ? `合報優惠總額 ${formatMoney(plan.packageDiscount)}` : '',
+          plan.voucherAmount ? `抵用券總額 ${formatMoney(plan.voucherAmount)}` : ''
+        ].filter(Boolean).join('；'),
+        status: 'posted',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      state.paymentLedger.push(payment);
+      payments.push(payment);
+    }
+    recomputeReceivable(receivable);
+    changedReceivables.push({ before, after: receivable });
+  }
+  elements.batchPaymentForm.reset();
+  renderAll();
+  for (const payment of payments) {
+    await recordAudit('payment', payment.id, 'create', null, payment, '學生多科收款');
+  }
+  for (const row of changedReceivables) {
+    await recordAudit('receivable', row.after.id, 'update', row.before, row.after, '合報/抵用券/分期收款後更新');
+  }
+  renderAll();
+  try {
+    await Promise.all([
+      ...payments.map((payment) => savePaymentRecord(payment)),
+      ...changedReceivables.map((row) => saveReceivable(row.after))
+    ]);
+  } catch (error) {
+    setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
+  }
+});
+
+[
+  elements.withdrawalRefundForm,
+  elements.refundReceivable
+].forEach((element) => {
+  element.addEventListener('input', renderRefundPreview);
+  element.addEventListener('change', renderRefundPreview);
+});
+
+elements.withdrawalRefundForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const plan = refundPlan();
+  if (!plan || plan.refundAmount <= 0) return;
+  const receivableBefore = { ...plan.receivable };
+  plan.receivable.amount = plan.earnedAmount;
+  plan.receivable.withdrawal = {
+    date: plan.date,
+    withdrawSessionNo: plan.withdrawSessionNo,
+    sessionsTaken: plan.sessionsTaken,
+    totalSessions: plan.totalSessions,
+    listPricePerSession: plan.listPricePerSession,
+    refundAmount: plan.refundAmount,
+    note: plan.note
+  };
+  const refund = {
+    id: nowId('refund'),
+    receivableId: plan.receivable.id,
+    studentId: plan.receivable.studentId,
+    studentName: plan.receivable.studentName,
+    courseName: plan.receivable.courseName,
+    date: plan.date,
+    amount: -Math.abs(plan.refundAmount),
+    method: plan.method,
+    assetAccountId: plan.method === '現金退費' ? 'cash_on_hand' : 'bank_main',
+    incomeAccountId: plan.receivable.incomeAccountId || 'income_tuition',
+    note: [
+      `退班第 ${plan.withdrawSessionNo || ''} 堂`,
+      `已上 ${plan.sessionsTaken} 堂`,
+      plan.note
+    ].filter(Boolean).join('；'),
+    status: 'posted',
+    source: 'withdrawalRefund',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  state.paymentLedger.push(refund);
+  recomputeReceivable(plan.receivable);
+  await addMembershipEvent({
+    courseName: plan.receivable.courseName,
+    month: plan.date.slice(0, 7),
+    date: plan.date,
+    sessionNo: String(plan.withdrawSessionNo || ''),
+    studentName: plan.receivable.studentName,
+    studentId: plan.receivable.studentId,
+    action: '退出',
+    note: `退費 ${formatMoney(plan.refundAmount)}；已上 ${formatMoney(plan.sessionsTaken)} 堂`
+  });
+  elements.withdrawalRefundForm.reset();
+  renderAll();
+  await recordAudit('payment', refund.id, 'create', null, refund, '退班退費');
+  await recordAudit('receivable', plan.receivable.id, 'update', receivableBefore, plan.receivable, '退班退費後更新應收');
+  renderAll();
+  try {
+    await savePaymentRecord(refund);
+    await saveReceivable(plan.receivable);
+  } catch (error) {
+    setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
+  }
 });
 
 elements.paymentLedgerForm.addEventListener('submit', async (event) => {
