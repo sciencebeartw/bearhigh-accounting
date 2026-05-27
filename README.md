@@ -28,6 +28,7 @@ Firebase 專案也獨立使用 `bearhigh`，避免開發期與 `sciencebear-admi
 - 老師薪資試算：可選 Numbers 匯入的老師名單區塊，依每位學生 `單堂`、本月堂數、加入/退出異動、分潤比例或固定鐘點產生單班試算，並可列印 / 存 PDF。
 - 月底薪資結算：先為各老師名單區塊儲存本月上課日期，再一次產生所有老師付款小計與班級明細；一般老師用人均堂收 `670` / 自然科學班 `900` 再乘分潤，明軒數學用 `4500 + max(人數 - 15, 0) * 300`，國文或手動鐘點課可用鐘點制。
 - 月結檢查：薪資頁會先列出每個老師名單區塊是否可結算、缺堂次、是否有本月進退班異動；若像國文只有歷史薪資區塊但沒有老師名單，會標成需手動處理，避免月底漏算。
+- 月結快照：月底結算產生後可儲存成固定快照，之後即使修改堂次、名單或公式設定，也不會覆蓋已存版本；已存月結可重新列印 / 存 PDF。
 - 堂次日期表：薪資試算可為每個老師名單區塊與月份儲存一組本月上課日期；進退班異動若未填第幾堂，會用異動日期自動推算從哪一堂開始加入或退出。堂次日期必須依序遞增且數量需等於本月堂數，避免錯算。
 - 學生資料中心：可依學生、分頁/cohort、班級/課程、繳費狀態與同名風險查詢。
 - CRM 檔案：學生明細可看基本資料、課程、學費欄位、手動學費、進退班異動、追蹤備註與時間軸。
@@ -47,6 +48,7 @@ Firebase 專案也獨立使用 `bearhigh`，避免開發期與 `sciencebear-admi
 - 線上新增的學費、異動、薪資草表會同步到 `accounting/manual/*`。
 - 線上新增的學生 CRM 狀態與追蹤備註也會同步到 `accounting/manual/studentProfiles` 與 `accounting/manual/studentNotes`。
 - 線上新增的堂次日期表會同步到 `accounting/manual/courseSessionPlans`，用於月底薪資試算的日期轉堂次。
+- 線上儲存的月結快照會同步到 `accounting/manual/payrollSettlements`，用於保留已送審或已付款的薪資總表版本。
 - 線上新增的學期/梯次、老師、學生、課程與報名收費會同步到 `accounting/manual/manualTerms`、`manualTeachers`、`manualStudents`、`manualCourses`、`manualCourseEnrollments`。
 - 線上新增的收款狀態、收款/退費流水與稽核紀錄會同步到 `accounting/manual/receivables`、`paymentLedger`、`auditLogs`。
 - 登入後會讀回雲端 `accounting/manual/*`，避免換裝置後看不到先前手動紀錄。

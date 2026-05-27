@@ -255,6 +255,7 @@
             <div class="actions wide">
               <button class="primary" id="buildPayrollSettlement" type="button">產生月底結算</button>
               <button class="ghost" id="printPayrollSettlement" type="button" disabled>列印 / 存 PDF</button>
+              <button class="ghost" id="savePayrollSettlement" type="button" disabled>儲存月結快照</button>
             </div>
           </div>
           <section class="import-summary" id="payrollSettlementSummary"></section>
@@ -288,6 +289,30 @@
                   </tr>
                 </thead>
                 <tbody id="payrollSettlementClassRows"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="section-block">
+            <div class="section-heading">
+              <div>
+                <h2>已存月結紀錄</h2>
+                <p class="muted">送老闆前先儲存一份快照；之後修改堂次或名單，不會覆蓋已存版本。</p>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>月份</th>
+                    <th>儲存時間</th>
+                    <th>老師數</th>
+                    <th>已計算課程</th>
+                    <th>未設定堂次</th>
+                    <th>應付總額</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="payrollSettlementArchiveRows"></tbody>
               </table>
             </div>
           </div>

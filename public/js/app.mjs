@@ -45,6 +45,7 @@ let sessionPlanEditorKey = '';
 state.tuitionPayments ||= [];
 state.membershipEvents ||= [];
 state.payrollRuns ||= [];
+state.payrollSettlements ||= [];
 state.studentProfiles ||= {};
 state.studentNotes ||= [];
 state.courseSessionPlans ||= {};
@@ -98,6 +99,7 @@ const elements = {
   payrollSettlementMinBonus: document.querySelector('#payrollSettlementMinBonus'),
   payrollSettlementMinThreshold: document.querySelector('#payrollSettlementMinThreshold'),
   payrollSettlementMonth: document.querySelector('#payrollSettlementMonth'),
+  payrollSettlementArchiveRows: document.querySelector('#payrollSettlementArchiveRows'),
   payrollSettlementScienceRate: document.querySelector('#payrollSettlementScienceRate'),
   payrollSettlementShare: document.querySelector('#payrollSettlementShare'),
   payrollSettlementSummary: document.querySelector('#payrollSettlementSummary'),
@@ -123,6 +125,7 @@ const elements = {
   exportPayrollPreviewXls: document.querySelector('#exportPayrollPreviewXls'),
   buildPayrollSettlement: document.querySelector('#buildPayrollSettlement'),
   printPayrollSettlement: document.querySelector('#printPayrollSettlement'),
+  savePayrollSettlement: document.querySelector('#savePayrollSettlement'),
   pricingVersion: document.querySelector('#pricingVersion'),
   packageId: document.querySelector('#packageId'),
   courseOptions: document.querySelector('#courseOptions'),
@@ -214,6 +217,7 @@ function loadState() {
       tuitionPayments: [],
       membershipEvents: [],
       payrollRuns: [],
+      payrollSettlements: [],
       manualStudents: [],
       manualTerms: [],
       manualTeachers: [],
@@ -230,6 +234,7 @@ function loadState() {
       tuitionPayments: [],
       membershipEvents: [],
       payrollRuns: [],
+      payrollSettlements: [],
       manualStudents: [],
       manualTerms: [],
       manualTeachers: [],
@@ -249,6 +254,7 @@ function saveState() {
     tuitionPayments: state.tuitionPayments,
     membershipEvents: state.membershipEvents,
     payrollRuns: state.payrollRuns,
+    payrollSettlements: state.payrollSettlements,
     studentProfiles: state.studentProfiles,
     studentNotes: state.studentNotes,
     courseSessionPlans: state.courseSessionPlans,
@@ -267,6 +273,7 @@ function saveState() {
   const draftCount = state.tuitionPayments.length +
     state.membershipEvents.length +
     state.payrollRuns.length +
+    state.payrollSettlements.length +
     state.studentNotes.length +
     state.manualStudents.length +
     state.manualTerms.length +
@@ -2428,6 +2435,7 @@ function renderPayrollSettlement() {
     elements.payrollSettlementTeacherRows.innerHTML = emptyRow(6);
     elements.payrollSettlementClassRows.innerHTML = emptyRow(7);
     elements.printPayrollSettlement.disabled = true;
+    elements.savePayrollSettlement.disabled = true;
     return;
   }
 
@@ -2467,6 +2475,26 @@ function renderPayrollSettlement() {
     : emptyRow(7);
 
   elements.printPayrollSettlement.disabled = payrollSettlement.teachers.length === 0;
+  elements.savePayrollSettlement.disabled = payrollSettlement.teachers.length === 0;
+}
+
+function renderPayrollSettlementArchive() {
+  const rows = (state.payrollSettlements || [])
+    .slice()
+    .sort((a, b) => String(b.savedAt || b.generatedAt || '').localeCompare(String(a.savedAt || a.generatedAt || '')));
+  elements.payrollSettlementArchiveRows.innerHTML = rows.length
+    ? rows.map((row) => `
+      <tr>
+        <td>${escapeHtml(row.month || '')}</td>
+        <td>${escapeHtml((row.savedAt || row.generatedAt || '').slice(0, 19).replace('T', ' '))}</td>
+        <td class="money">${formatMoney((row.teachers || []).length)}</td>
+        <td class="money">${formatMoney(row.calculatedClassCount)}</td>
+        <td class="money">${formatMoney(row.missingClassCount)}</td>
+        <td class="money">${formatMoney(row.total)}</td>
+        <td><button class="ghost small" type="button" data-print-payroll-settlement="${escapeHtml(row.id)}">列印 / 存 PDF</button></td>
+      </tr>
+    `).join('')
+    : emptyRow(7);
 }
 
 function buildPayrollSettlementPrintHtml(settlement) {
@@ -2770,6 +2798,7 @@ async function loadCloudManualRecords() {
   state.tuitionPayments = mergeRecordsById(state.tuitionPayments, Object.values(manual.tuitionPayments || {}));
   state.membershipEvents = mergeRecordsById(state.membershipEvents, Object.values(manual.membershipEvents || {}));
   state.payrollRuns = mergeRecordsById(state.payrollRuns, Object.values(manual.payrollRuns || {}));
+  state.payrollSettlements = mergeRecordsById(state.payrollSettlements, Object.values(manual.payrollSettlements || {}));
   state.studentNotes = mergeRecordsById(state.studentNotes, Object.values(manual.studentNotes || {}));
   state.manualStudents = mergeRecordsById(state.manualStudents, Object.values(manual.manualStudents || {}));
   state.manualTerms = mergeRecordsById(state.manualTerms, Object.values(manual.manualTerms || {}));
@@ -3403,6 +3432,7 @@ function renderAll() {
   renderPayroll();
   renderPayrollPreview();
   renderPayrollSettlement();
+  renderPayrollSettlementArchive();
   renderPayrollCloseCheck();
   renderAccounting();
   renderRecords();
@@ -3898,6 +3928,44 @@ elements.printPayrollSettlement.addEventListener('click', () => {
   const html = buildPayrollSettlementPrintHtml(payrollSettlement);
   if (!popup) {
     downloadFile('bearhigh-payroll-settlement.html', html, 'text/html;charset=utf-8');
+    setCloudStatus('瀏覽器封鎖列印視窗，已改下載 HTML，可開啟後列印成 PDF');
+    return;
+  }
+  popup.document.open();
+  popup.document.write(html);
+  popup.document.close();
+  popup.focus();
+  window.setTimeout(() => popup.print(), 350);
+});
+
+elements.savePayrollSettlement.addEventListener('click', async () => {
+  if (!payrollSettlement || !payrollSettlement.teachers.length) return;
+  const record = JSON.parse(JSON.stringify({
+    ...payrollSettlement,
+    id: nowId('payroll_settlement'),
+    savedAt: new Date().toISOString(),
+    savedBy: currentUser?.email || 'local',
+    status: 'locked_snapshot'
+  }));
+  state.payrollSettlements.push(record);
+  renderAll();
+  setCloudStatus('月結快照已儲存於本機');
+  try {
+    await saveCloudRecord('payrollSettlements', record);
+  } catch (error) {
+    setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
+  }
+});
+
+elements.payrollSettlementArchiveRows.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-print-payroll-settlement]');
+  if (!button) return;
+  const record = (state.payrollSettlements || []).find((row) => row.id === button.dataset.printPayrollSettlement);
+  if (!record) return;
+  const popup = window.open('', '_blank');
+  const html = buildPayrollSettlementPrintHtml(record);
+  if (!popup) {
+    downloadFile(`bearhigh-payroll-settlement-${filenameSafe(record.month)}.html`, html, 'text/html;charset=utf-8');
     setCloudStatus('瀏覽器封鎖列印視窗，已改下載 HTML，可開啟後列印成 PDF');
     return;
   }
@@ -4615,6 +4683,7 @@ document.querySelector('#clearAll').addEventListener('click', () => {
   state.tuitionPayments.splice(0);
   state.membershipEvents.splice(0);
   state.payrollRuns.splice(0);
+  state.payrollSettlements.splice(0);
   state.studentNotes.splice(0);
   state.manualStudents.splice(0);
   state.manualTerms.splice(0);
