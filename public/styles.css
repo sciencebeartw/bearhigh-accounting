@@ -405,6 +405,23 @@ textarea {
   overflow: auto;
 }
 
+.matrix-filter-bar {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 12px 0 12px;
+  padding: 12px;
+  position: sticky;
+  top: 97px;
+  z-index: 6;
+}
+
+.matrix-filter-title {
+  color: var(--brand);
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
 .matrix-table {
   font-size: 0.82rem;
   min-width: max-content;
@@ -551,14 +568,9 @@ td.money {
 }
 
 .filter-grid {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  margin-bottom: 18px;
-  padding: 14px;
 }
 
 .checkbox-line {
@@ -825,6 +837,10 @@ tr.is-selected td {
   .app-logo {
     height: 46px;
     width: 46px;
+  }
+
+  .matrix-filter-bar {
+    position: static;
   }
 
   .topbar-actions {

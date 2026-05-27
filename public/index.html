@@ -391,44 +391,46 @@
 
         <section class="import-summary" id="studentDashboardSummary"></section>
 
-        <div class="filter-grid">
-          <label>
-            <span>關鍵字</span>
-            <input id="studentKeyword" autocomplete="off" placeholder="學生、學校、分頁、課程">
-          </label>
-          <label>
-            <span>分頁 / cohort</span>
-            <select id="studentSheetFilter">
-              <option value="">全部</option>
-            </select>
-          </label>
-          <label>
-            <span>班級 / 課程</span>
-            <select id="studentCourseFilter">
-              <option value="">全部</option>
-            </select>
-          </label>
-          <label>
-            <span>繳費狀態</span>
-            <select id="studentPaymentFilter">
-              <option value="">全部</option>
-              <option value="paid">有繳費日期</option>
-              <option value="tuition_no_payment">有學費但未見繳費日期</option>
-              <option value="refund">有退費</option>
-              <option value="no_tuition">無學費資料</option>
-            </select>
-          </label>
-          <label class="checkbox-line">
-            <input id="studentDuplicateOnly" type="checkbox">
-            <span>只看同名風險</span>
-          </label>
-        </div>
-
         <section class="section-block">
           <div class="section-heading">
             <div>
               <h2>年級大表</h2>
               <p class="muted" id="studentMatrixSummary">依目前篩選顯示，一列一個學生，可左右滑查看課程勾選與收費欄位。</p>
+            </div>
+          </div>
+          <div class="matrix-filter-bar">
+            <div class="matrix-filter-title">大表篩選</div>
+            <div class="filter-grid">
+              <label>
+                <span>關鍵字</span>
+                <input id="studentKeyword" autocomplete="off" placeholder="學生、學校、分頁、課程">
+              </label>
+              <label>
+                <span>分頁 / cohort</span>
+                <select id="studentSheetFilter">
+                  <option value="">全部</option>
+                </select>
+              </label>
+              <label>
+                <span>班級 / 課程</span>
+                <select id="studentCourseFilter">
+                  <option value="">全部</option>
+                </select>
+              </label>
+              <label>
+                <span>繳費狀態</span>
+                <select id="studentPaymentFilter">
+                  <option value="">全部</option>
+                  <option value="paid">有繳費日期</option>
+                  <option value="tuition_no_payment">有學費但未見繳費日期</option>
+                  <option value="refund">有退費</option>
+                  <option value="no_tuition">無學費資料</option>
+                </select>
+              </label>
+              <label class="checkbox-line">
+                <input id="studentDuplicateOnly" type="checkbox">
+                <span>只看同名風險</span>
+              </label>
             </div>
           </div>
           <div class="table-wrap matrix-wrap">
