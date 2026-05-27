@@ -57,6 +57,20 @@ button:disabled {
   justify-content: flex-end;
 }
 
+.brand-lockup {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+
+.app-logo {
+  border-radius: 12px;
+  display: block;
+  height: 52px;
+  width: 52px;
+}
+
 .eyebrow {
   color: var(--accent);
   font-size: 0.78rem;
@@ -651,6 +665,11 @@ tr.is-selected td {
   .topbar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .app-logo {
+    height: 46px;
+    width: 46px;
   }
 
   .topbar-actions {
