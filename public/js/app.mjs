@@ -66,15 +66,24 @@ const elements = {
   payrollCalcSessions: document.querySelector('#payrollCalcSessions'),
   payrollCalcShare: document.querySelector('#payrollCalcShare'),
   payrollCalcTeacher: document.querySelector('#payrollCalcTeacher'),
+  payrollEventAction: document.querySelector('#payrollEventAction'),
+  payrollEventDate: document.querySelector('#payrollEventDate'),
+  payrollEventList: document.querySelector('#payrollEventList'),
+  payrollEventNote: document.querySelector('#payrollEventNote'),
+  payrollEventSessionNo: document.querySelector('#payrollEventSessionNo'),
+  payrollEventStudent: document.querySelector('#payrollEventStudent'),
+  payrollEventStudentOptions: document.querySelector('#payrollEventStudentOptions'),
   payrollPreviewRows: document.querySelector('#payrollPreviewRows'),
   payrollPreviewSummary: document.querySelector('#payrollPreviewSummary'),
   payrollRosterBlock: document.querySelector('#payrollRosterBlock'),
   payrollSessionDates: document.querySelector('#payrollSessionDates'),
   payrollSessionSummary: document.querySelector('#payrollSessionSummary'),
   previewPayrollRun: document.querySelector('#previewPayrollRun'),
+  savePayrollEvent: document.querySelector('#savePayrollEvent'),
   savePayrollSessionPlan: document.querySelector('#savePayrollSessionPlan'),
   savePayrollPreview: document.querySelector('#savePayrollPreview'),
   exportPayrollPreviewCsv: document.querySelector('#exportPayrollPreviewCsv'),
+  exportPayrollPreviewPrint: document.querySelector('#exportPayrollPreviewPrint'),
   exportPayrollPreviewXls: document.querySelector('#exportPayrollPreviewXls'),
   pricingVersion: document.querySelector('#pricingVersion'),
   packageId: document.querySelector('#packageId'),
@@ -803,6 +812,45 @@ function selectedPayrollRosterBlock() {
   return getTeacherRosterBlocks().find((block) => block.key === key) || null;
 }
 
+function syncPayrollStudentOptions() {
+  const block = selectedPayrollRosterBlock();
+  const names = Array.from(new Set((block?.rows || [])
+    .map((row) => row.fields?.['姓名'] || '')
+    .filter(Boolean)));
+  elements.payrollEventStudentOptions.innerHTML = names
+    .map((name) => `<option value="${escapeHtml(name)}"></option>`)
+    .join('');
+  elements.savePayrollEvent.disabled = !block;
+}
+
+function currentPayrollEvents() {
+  const block = selectedPayrollRosterBlock();
+  if (!block) return [];
+  const month = elements.payrollCalcMonth.value;
+  return state.membershipEvents
+    .filter((event) => (
+      (!month || String(event.date || event.month || '').startsWith(month)) &&
+      eventMatchesCourseName(event, block.title || '')
+    ))
+    .sort((a, b) => `${a.date || ''}-${a.sessionNo || ''}`.localeCompare(`${b.date || ''}-${b.sessionNo || ''}`));
+}
+
+function renderPayrollQuickEvents() {
+  syncPayrollStudentOptions();
+  const events = currentPayrollEvents();
+  elements.payrollEventList.innerHTML = events.length
+    ? events.map((event) => `
+      <div>
+        <strong>${escapeHtml(event.studentName)}</strong>
+        ${escapeHtml(event.action)}
+        ${escapeHtml(event.date || '')}
+        ${event.sessionNo ? `第 ${escapeHtml(event.sessionNo)} 堂` : ''}
+        ${event.note ? `｜${escapeHtml(event.note)}` : ''}
+      </div>
+    `).join('')
+    : '<div>本班本月尚無進退班異動。</div>';
+}
+
 function payrollSessionPlanKey(rosterKey, month) {
   if (!rosterKey || !month) return '';
   return `${month}::${rosterKey}`;
@@ -866,7 +914,7 @@ function payrollEventsForStudent(studentNameValue, courseName, month, studentId 
       const sameStudent = studentId
         ? event.studentId === studentId || (!event.studentId && event.studentName === studentNameValue)
         : event.studentName === studentNameValue && !event.studentId;
-      const sameMonth = !month || String(event.date || '').startsWith(month);
+      const sameMonth = !month || String(event.date || event.month || '').startsWith(month);
       return sameStudent && sameMonth && eventMatchesCourseName(event, courseName);
     })
     .sort((a, b) => `${a.date}-${a.sessionNo}`.localeCompare(`${b.date}-${b.sessionNo}`));
@@ -876,7 +924,7 @@ function payrollEventsForStudentName(studentNameValue, courseName, month) {
   return state.membershipEvents
     .filter((event) => {
       const sameStudent = event.studentName === studentNameValue;
-      const sameMonth = !month || String(event.date || '').startsWith(month);
+      const sameMonth = !month || String(event.date || event.month || '').startsWith(month);
       return sameStudent && sameMonth && eventMatchesCourseName(event, courseName);
     })
     .sort((a, b) => `${a.date}-${a.sessionNo}`.localeCompare(`${b.date}-${b.sessionNo}`));
@@ -947,11 +995,13 @@ function buildPayrollPreview() {
 function renderPayrollPreview() {
   syncPayrollRosterOptions();
   syncPayrollSessionPlanEditor();
+  renderPayrollQuickEvents();
   if (!payrollPreview) {
     elements.payrollPreviewSummary.innerHTML = '<div class="record-item"><p>尚未產生薪資試算</p></div>';
     elements.payrollPreviewRows.innerHTML = emptyRow(6);
     elements.savePayrollPreview.disabled = true;
     elements.exportPayrollPreviewCsv.disabled = true;
+    elements.exportPayrollPreviewPrint.disabled = true;
     elements.exportPayrollPreviewXls.disabled = true;
     return;
   }
@@ -980,6 +1030,7 @@ function renderPayrollPreview() {
 
   elements.savePayrollPreview.disabled = false;
   elements.exportPayrollPreviewCsv.disabled = false;
+  elements.exportPayrollPreviewPrint.disabled = false;
   elements.exportPayrollPreviewXls.disabled = false;
 }
 
@@ -1046,6 +1097,91 @@ function buildPayrollXls(preview) {
     <tr><td colspan="7"></td></tr>
     <tr class="sign"><th>製表</th><td colspan="2"></td><th>覆核</th><td></td><th>老師確認</th><td></td></tr>
   </table>
+</body>
+</html>`;
+}
+
+function buildPayrollPrintHtml(preview) {
+  const generatedAt = new Date().toLocaleString('zh-TW', { hour12: false });
+  const sessionDateText = (preview.sessionDates || [])
+    .map((session) => `第 ${session.sessionNo} 堂 ${session.date}`)
+    .join(' / ');
+  const detailRows = preview.rows.map((row, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td>${escapeHtml(row.studentName)}</td>
+      <td>${escapeHtml(row.school)}</td>
+      <td class="money">${formatMoney(row.singleRevenue)}</td>
+      <td class="money">${formatMoney(row.sessionCount)}</td>
+      <td>${escapeHtml(row.eventNote || '')}</td>
+      <td class="money">${formatMoney(row.revenue)}</td>
+    </tr>
+  `).join('');
+
+  return `<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <title>山熊升大老師薪資表</title>
+  <style>
+    @page { size: A4 portrait; margin: 12mm; }
+    * { box-sizing: border-box; }
+    body { color: #14232e; font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", Arial, sans-serif; margin: 0; }
+    h1 { font-size: 22px; margin: 0 0 14px; text-align: center; }
+    .meta { border: 1px solid #9fb9c7; border-radius: 8px; display: grid; grid-template-columns: repeat(2, 1fr); margin-bottom: 12px; overflow: hidden; }
+    .meta div { border-bottom: 1px solid #d6e3ea; padding: 8px 10px; }
+    .meta div:nth-last-child(-n + 2) { border-bottom: 0; }
+    .label { color: #5c6f7b; display: block; font-size: 12px; font-weight: 700; margin-bottom: 2px; }
+    table { border-collapse: collapse; font-size: 12px; width: 100%; }
+    th, td { border: 1px solid #9fb9c7; padding: 6px 7px; vertical-align: top; }
+    th { background: #e3f3f9; color: #14232e; }
+    .money { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+    .summary { margin-top: 12px; }
+    .summary th { text-align: right; }
+    .sign { display: grid; gap: 10px; grid-template-columns: repeat(3, 1fr); margin-top: 18px; }
+    .sign div { border-bottom: 1px solid #14232e; height: 44px; padding-top: 26px; }
+    .toolbar { margin: 0 0 12px; text-align: right; }
+    .toolbar button { background: #237fa6; border: 0; border-radius: 8px; color: white; cursor: pointer; font: inherit; font-weight: 700; padding: 8px 14px; }
+    @media print { .toolbar { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="toolbar"><button onclick="window.print()">列印 / 存 PDF</button></div>
+  <h1>山熊升大老師薪資表</h1>
+  <section class="meta">
+    <div><span class="label">月份</span>${escapeHtml(preview.month || '')}</div>
+    <div><span class="label">老師</span>${escapeHtml(preview.teacherName)}</div>
+    <div><span class="label">班級 / 課程</span>${escapeHtml(preview.courseName)}</div>
+    <div><span class="label">名單來源</span>${escapeHtml(preview.rosterSheet || '')}</div>
+    <div><span class="label">計算方式</span>${escapeHtml(payrollMethodLabel(preview))}</div>
+    <div><span class="label">本月堂數</span>${formatMoney(preview.sessionCount)}</div>
+    <div><span class="label">堂次日期</span>${escapeHtml(sessionDateText || '未設定')}</div>
+    <div><span class="label">產生時間</span>${escapeHtml(generatedAt)}</div>
+  </section>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>學生</th>
+        <th>學校</th>
+        <th>單堂收入</th>
+        <th>有效堂數</th>
+        <th>異動</th>
+        <th>收入小計</th>
+      </tr>
+    </thead>
+    <tbody>${detailRows}</tbody>
+  </table>
+  <table class="summary">
+    <tr><th>學生收入合計</th><td class="money">${formatMoney(preview.revenueTotal)}</td><th>老師基礎薪資</th><td class="money">${formatMoney(preview.teacherBase)}</td></tr>
+    <tr><th>調整</th><td class="money">${formatMoney(preview.adjustment)}</td><th>老師小計</th><td class="money">${formatMoney(preview.total)}</td></tr>
+    <tr><th>備註</th><td colspan="3">${escapeHtml(preview.note || '')}</td></tr>
+  </table>
+  <section class="sign">
+    <div>製表</div>
+    <div>覆核</div>
+    <div>老師確認</div>
+  </section>
 </body>
 </html>`;
 }
@@ -1158,6 +1294,22 @@ async function saveCloudRecord(kind, record, key = record.id) {
   };
   await set(accountingRef(`manual/${kind}/${safeFirebaseKey(key)}`), payload);
   setCloudStatus('雲端已同步');
+}
+
+async function addMembershipEvent(data) {
+  const record = {
+    id: nowId('event'),
+    createdAt: new Date().toISOString(),
+    ...data
+  };
+  state.membershipEvents.push(record);
+  renderAll();
+  try {
+    await saveCloudRecord('membershipEvents', record);
+  } catch (error) {
+    setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
+  }
+  return record;
 }
 
 function renderEvents() {
@@ -1455,19 +1607,8 @@ document.querySelector('#clearTuitionForm').addEventListener('click', () => {
 elements.eventForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const data = Object.fromEntries(new FormData(elements.eventForm).entries());
-  const record = {
-    id: nowId('event'),
-    createdAt: new Date().toISOString(),
-    ...data
-  };
-  state.membershipEvents.push(record);
+  await addMembershipEvent(data);
   elements.eventForm.reset();
-  renderAll();
-  try {
-    await saveCloudRecord('membershipEvents', record);
-  } catch (error) {
-    setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
-  }
 });
 
 elements.payrollForm.addEventListener('submit', async (event) => {
@@ -1533,6 +1674,32 @@ elements.savePayrollSessionPlan.addEventListener('click', async () => {
   }
 });
 
+elements.savePayrollEvent.addEventListener('click', async () => {
+  const block = selectedPayrollRosterBlock();
+  const studentNameValue = elements.payrollEventStudent.value.trim();
+  if (!block || !studentNameValue) {
+    setCloudStatus('請先選老師名單區塊並填學生');
+    return;
+  }
+  const candidates = payrollStudentCandidates(studentNameValue, block.title || '');
+  await addMembershipEvent({
+    courseName: block.title || '',
+    month: elements.payrollCalcMonth.value || '',
+    date: elements.payrollEventDate.value || '',
+    sessionNo: elements.payrollEventSessionNo.value.trim(),
+    studentName: studentNameValue,
+    studentId: candidates.length === 1 ? candidates[0].id : '',
+    action: elements.payrollEventAction.value,
+    note: elements.payrollEventNote.value.trim()
+  });
+  elements.payrollEventStudent.value = '';
+  elements.payrollEventDate.value = '';
+  elements.payrollEventSessionNo.value = '';
+  elements.payrollEventNote.value = '';
+  payrollPreview = buildPayrollPreview();
+  renderPayrollPreview();
+});
+
 elements.previewPayrollRun.addEventListener('click', () => {
   payrollPreview = buildPayrollPreview();
   renderPayrollPreview();
@@ -1550,9 +1717,16 @@ elements.previewPayrollRun.addEventListener('click', () => {
   element.addEventListener('change', () => {
     if (element === elements.payrollCalcMonth || element === elements.payrollRosterBlock) {
       syncPayrollSessionPlanEditor();
+      if (element === elements.payrollRosterBlock) {
+        const block = selectedPayrollRosterBlock();
+        if (block && !elements.payrollCalcTeacher.value.trim()) {
+          elements.payrollCalcTeacher.value = block.teacherSheet || '';
+        }
+      }
     } else {
       updatePayrollSessionSummary();
     }
+    renderPayrollQuickEvents();
     if (!payrollPreview) return;
     payrollPreview = buildPayrollPreview();
     renderPayrollPreview();
@@ -1598,6 +1772,22 @@ elements.exportPayrollPreviewCsv.addEventListener('click', () => {
   rows.push([]);
   rows.push(['薪資小計', payrollPreview.total, '學生收入合計', payrollPreview.revenueTotal, '老師基礎薪資', payrollPreview.teacherBase, '調整', payrollPreview.adjustment]);
   downloadFile('bearhigh-payroll-preview.csv', toCsv(rows), 'text/csv;charset=utf-8');
+});
+
+elements.exportPayrollPreviewPrint.addEventListener('click', () => {
+  if (!payrollPreview) return;
+  const popup = window.open('', '_blank');
+  const html = buildPayrollPrintHtml(payrollPreview);
+  if (!popup) {
+    downloadFile('bearhigh-payroll-print.html', html, 'text/html;charset=utf-8');
+    setCloudStatus('瀏覽器封鎖列印視窗，已改下載 HTML，可開啟後列印成 PDF');
+    return;
+  }
+  popup.document.open();
+  popup.document.write(html);
+  popup.document.close();
+  popup.focus();
+  window.setTimeout(() => popup.print(), 350);
 });
 
 elements.exportPayrollPreviewXls.addEventListener('click', () => {

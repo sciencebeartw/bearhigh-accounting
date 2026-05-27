@@ -200,6 +200,13 @@
       </section>
 
       <section class="panel" data-panel="payroll">
+        <div class="section-heading payroll-heading">
+          <div>
+            <h2>本月老師薪資</h2>
+            <p class="muted">一次處理一個班級 / 老師名單區塊；同一位老師有多個班，就把每個班依序加入本月薪資表。</p>
+          </div>
+        </div>
+
         <section class="form-grid payroll-builder">
           <label>
             <span>試算月份</span>
@@ -227,6 +234,42 @@
             <div id="payrollSessionSummary" class="muted">選擇老師名單區塊與月份後，可儲存本月堂次日期。</div>
             <button class="ghost" id="savePayrollSessionPlan" type="button" disabled>儲存堂次日期</button>
           </div>
+          <div class="payroll-inline-event wide">
+            <div class="section-heading">
+              <div>
+                <h2>本班本月進退班</h2>
+                <p class="muted">只有中途加入或退出才填；可填日期，也可直接填第幾堂，手填第幾堂會優先計算。</p>
+              </div>
+            </div>
+            <div class="quick-event-grid">
+              <label>
+                <span>學生</span>
+                <input id="payrollEventStudent" autocomplete="off" list="payrollEventStudentOptions">
+                <datalist id="payrollEventStudentOptions"></datalist>
+              </label>
+              <label>
+                <span>異動</span>
+                <select id="payrollEventAction">
+                  <option value="加入">加入</option>
+                  <option value="退出">退出</option>
+                </select>
+              </label>
+              <label>
+                <span>日期</span>
+                <input id="payrollEventDate" type="date">
+              </label>
+              <label>
+                <span>第幾堂</span>
+                <input id="payrollEventSessionNo" inputmode="numeric" placeholder="例：2">
+              </label>
+              <label>
+                <span>備註</span>
+                <input id="payrollEventNote" autocomplete="off">
+              </label>
+              <button class="primary" id="savePayrollEvent" type="button">加入本班異動</button>
+            </div>
+            <div id="payrollEventList" class="mini-record-list"></div>
+          </div>
           <label>
             <span>分潤比例 %</span>
             <input id="payrollCalcShare" inputmode="decimal" value="50">
@@ -245,12 +288,19 @@
           </label>
           <div class="actions wide">
             <button class="primary" id="previewPayrollRun" type="button">預覽薪資試算</button>
-            <button class="ghost" id="savePayrollPreview" type="button" disabled>加入薪資草表</button>
+            <button class="ghost" id="savePayrollPreview" type="button" disabled>把這個班加入本月薪資表</button>
             <button class="ghost" id="exportPayrollPreviewCsv" type="button" disabled>匯出本次試算 CSV</button>
-            <button class="ghost" id="exportPayrollPreviewXls" type="button" disabled>匯出正式薪資表 Excel</button>
+            <button class="ghost" id="exportPayrollPreviewPrint" type="button" disabled>列印 / 存 PDF</button>
+            <button class="ghost" id="exportPayrollPreviewXls" type="button" disabled hidden>匯出 Excel</button>
           </div>
         </section>
 
+        <div class="section-heading payroll-heading">
+          <div>
+            <h2>本班試算明細</h2>
+            <p class="muted">下方是目前選取班級的逐學生計算；確認無誤後，再加入本月薪資表。</p>
+          </div>
+        </div>
         <section class="import-summary" id="payrollPreviewSummary"></section>
 
         <div class="table-wrap">
@@ -269,7 +319,7 @@
           </table>
         </div>
 
-        <form class="form-grid" id="payrollForm">
+        <form class="form-grid" id="payrollForm" hidden>
           <label>
             <span>月份</span>
             <input name="month" type="month" required>
@@ -302,6 +352,12 @@
             <button class="primary" type="submit">加入薪資草表</button>
           </div>
         </form>
+        <div class="section-heading payroll-heading">
+          <div>
+            <h2>本月薪資表</h2>
+            <p class="muted">同一位老師的不同班級會列成多筆，月底再看小計或匯出。</p>
+          </div>
+        </div>
         <div class="table-wrap">
           <table>
             <thead>

@@ -207,6 +207,10 @@ button {
   margin-bottom: 18px;
 }
 
+.payroll-heading {
+  margin: 18px 0 10px;
+}
+
 .session-tools {
   align-items: center;
   background: var(--surface-2);
@@ -216,6 +220,44 @@ button {
   gap: 12px;
   justify-content: space-between;
   padding: 10px 12px;
+}
+
+.payroll-inline-event {
+  background: #f5fbfe;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.payroll-inline-event .section-heading {
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.quick-event-grid {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1.4fr 0.8fr 1fr 0.8fr 1.2fr auto;
+}
+
+.quick-event-grid button {
+  min-height: 42px;
+  white-space: nowrap;
+}
+
+.mini-record-list {
+  color: var(--muted);
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.mini-record-list div {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
 }
 
 label,
@@ -705,6 +747,10 @@ tr.is-selected td {
   }
 
   .mini-row {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-event-grid {
     grid-template-columns: 1fr;
   }
 
