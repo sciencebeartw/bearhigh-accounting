@@ -48,6 +48,8 @@ state.studentProfiles ||= {};
 state.studentNotes ||= [];
 state.courseSessionPlans ||= {};
 state.manualStudents ||= [];
+state.manualTerms ||= [];
+state.manualTeachers ||= [];
 state.manualCourses ||= [];
 state.manualCourseEnrollments ||= [];
 state.importSnapshot ||= null;
@@ -118,8 +120,13 @@ const elements = {
   manualEnrollmentCourse: document.querySelector('#manualEnrollmentCourse'),
   manualEnrollmentForm: document.querySelector('#manualEnrollmentForm'),
   manualEnrollmentStudent: document.querySelector('#manualEnrollmentStudent'),
+  manualMasterRows: document.querySelector('#manualMasterRows'),
   manualStudentCohort: document.querySelector('#manualStudentCohort'),
   manualStudentForm: document.querySelector('#manualStudentForm'),
+  manualTeacherForm: document.querySelector('#manualTeacherForm'),
+  manualTeacherOptions: document.querySelector('#manualTeacherOptions'),
+  manualTermForm: document.querySelector('#manualTermForm'),
+  manualTermOptions: document.querySelector('#manualTermOptions'),
   studentMatrixHead: document.querySelector('#studentMatrixHead'),
   studentMatrixRows: document.querySelector('#studentMatrixRows'),
   studentMatrixSummary: document.querySelector('#studentMatrixSummary'),
@@ -150,6 +157,8 @@ function loadState() {
       membershipEvents: [],
       payrollRuns: [],
       manualStudents: [],
+      manualTerms: [],
+      manualTeachers: [],
       manualCourses: [],
       manualCourseEnrollments: [],
       importSnapshot: null
@@ -160,6 +169,8 @@ function loadState() {
       membershipEvents: [],
       payrollRuns: [],
       manualStudents: [],
+      manualTerms: [],
+      manualTeachers: [],
       manualCourses: [],
       manualCourseEnrollments: [],
       importSnapshot: null
@@ -176,6 +187,8 @@ function saveState() {
     studentNotes: state.studentNotes,
     courseSessionPlans: state.courseSessionPlans,
     manualStudents: state.manualStudents,
+    manualTerms: state.manualTerms,
+    manualTeachers: state.manualTeachers,
     manualCourses: state.manualCourses,
     manualCourseEnrollments: state.manualCourseEnrollments,
     importSnapshot: null
@@ -186,6 +199,8 @@ function saveState() {
     state.payrollRuns.length +
     state.studentNotes.length +
     state.manualStudents.length +
+    state.manualTerms.length +
+    state.manualTeachers.length +
     state.manualCourses.length +
     state.manualCourseEnrollments.length +
     Object.keys(state.courseSessionPlans).length;
@@ -341,6 +356,10 @@ function manualCourseLabel(course) {
 
 function manualCoursesById() {
   return new Map((state.manualCourses || []).map((course) => [course.id, course]));
+}
+
+function manualTeachersByName() {
+  return new Map((state.manualTeachers || []).map((teacher) => [String(teacher.name || '').trim(), teacher]));
 }
 
 function manualEnrollmentsByStudent() {
@@ -572,6 +591,18 @@ function syncManualForms() {
     .join('');
   if (elements.manualCourseCohort.innerHTML !== cohortHtml) elements.manualCourseCohort.innerHTML = cohortHtml;
   if (elements.manualStudentCohort.innerHTML !== cohortHtml) elements.manualStudentCohort.innerHTML = cohortHtml;
+
+  elements.manualTermOptions.innerHTML = (state.manualTerms || [])
+    .slice()
+    .sort((a, b) => String(a.label || '').localeCompare(String(b.label || ''), 'zh-Hant'))
+    .map((term) => `<option value="${escapeHtml(term.label)}"></option>`)
+    .join('');
+
+  elements.manualTeacherOptions.innerHTML = (state.manualTeachers || [])
+    .slice()
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hant'))
+    .map((teacher) => `<option value="${escapeHtml(teacher.name)}"></option>`)
+    .join('');
 
   const courseOptions = (state.manualCourses || [])
     .slice()
@@ -1016,7 +1047,35 @@ function renderManualCourses() {
   for (const enrollment of state.manualCourseEnrollments || []) {
     enrollmentsByCourse.set(enrollment.courseId, (enrollmentsByCourse.get(enrollment.courseId) || 0) + 1);
   }
-  elements.manualCourseSummary.textContent = `網頁學生 ${formatMoney(state.manualStudents.length)} 位，網頁科目 ${formatMoney(state.manualCourses.length)} 個，網頁報名 ${formatMoney(state.manualCourseEnrollments.length)} 筆`;
+  elements.manualCourseSummary.textContent = `學期 ${formatMoney(state.manualTerms.length)} 個，老師 ${formatMoney(state.manualTeachers.length)} 位，網頁學生 ${formatMoney(state.manualStudents.length)} 位，網頁科目 ${formatMoney(state.manualCourses.length)} 個，網頁報名 ${formatMoney(state.manualCourseEnrollments.length)} 筆`;
+  const termRows = (state.manualTerms || []).map((term) => ({
+    type: '學期',
+    name: term.label || '',
+    detail: [term.startMonth, term.endMonth].filter(Boolean).join(' 到 '),
+    defaults: term.note || ''
+  }));
+  const teacherRows = (state.manualTeachers || []).map((teacher) => ({
+    type: '老師',
+    name: teacher.name || '',
+    detail: [teacher.subject, teacher.contact].filter(Boolean).join(' / '),
+    defaults: [
+      teacher.defaultShare ? `分潤 ${formatMoney(teacher.defaultShare)}%` : '',
+      teacher.defaultFixedRate ? `鐘點 ${formatMoney(teacher.defaultFixedRate)}` : ''
+    ].filter(Boolean).join('；') || teacher.note || ''
+  }));
+  const masterRows = [...termRows, ...teacherRows]
+    .sort((a, b) => `${a.type} ${a.name}`.localeCompare(`${b.type} ${b.name}`, 'zh-Hant'));
+  elements.manualMasterRows.innerHTML = masterRows.length
+    ? masterRows.map((row) => `
+      <tr>
+        <td>${escapeHtml(row.type)}</td>
+        <td><strong>${escapeHtml(row.name)}</strong></td>
+        <td>${escapeHtml(row.detail)}</td>
+        <td>${escapeHtml(row.defaults)}</td>
+      </tr>
+    `).join('')
+    : emptyRow(4);
+
   elements.manualCourseRows.innerHTML = state.manualCourses.length
     ? state.manualCourses
       .slice()
@@ -1355,12 +1414,15 @@ function getTeacherRosterBlocks() {
   const manualBlocks = (state.manualCourses || []).map((course) => {
     const enrollments = (state.manualCourseEnrollments || []).filter((enrollment) => enrollment.courseId === course.id);
     const sessionCount = Math.max(1, Math.round(parseNumber(course.sessionCount)) || 24);
+    const teacher = manualTeachersByName().get(String(course.teacherName || '').trim());
     return {
       key: `manualCourse::${course.id}`,
       source: 'manualCourse',
       teacherSheet: course.teacherName || '網頁新增老師',
       title: manualCourseLabel(course),
       sheet: course.cohort || '',
+      defaultShare: teacher?.defaultShare || '',
+      defaultFixedRate: teacher?.defaultFixedRate || '',
       rowCount: enrollments.length,
       rows: enrollments.map((enrollment, index) => {
         const student = studentsById.get(enrollment.studentId);
@@ -1854,6 +1916,8 @@ async function loadCloudManualRecords() {
   state.payrollRuns = mergeRecordsById(state.payrollRuns, Object.values(manual.payrollRuns || {}));
   state.studentNotes = mergeRecordsById(state.studentNotes, Object.values(manual.studentNotes || {}));
   state.manualStudents = mergeRecordsById(state.manualStudents, Object.values(manual.manualStudents || {}));
+  state.manualTerms = mergeRecordsById(state.manualTerms, Object.values(manual.manualTerms || {}));
+  state.manualTeachers = mergeRecordsById(state.manualTeachers, Object.values(manual.manualTeachers || {}));
   state.manualCourses = mergeRecordsById(state.manualCourses, Object.values(manual.manualCourses || {}));
   state.manualCourseEnrollments = mergeRecordsById(state.manualCourseEnrollments, Object.values(manual.manualCourseEnrollments || {}));
   const remoteSessionPlans = {};
@@ -2204,6 +2268,66 @@ elements.eventForm.addEventListener('submit', async (event) => {
   elements.eventForm.reset();
 });
 
+elements.manualTermForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const data = Object.fromEntries(new FormData(elements.manualTermForm).entries());
+  const label = String(data.label || '').trim();
+  if (!label) return;
+  const existing = (state.manualTerms || []).find((term) => term.label === label);
+  const record = {
+    id: existing?.id || nowId('manual_term'),
+    createdAt: existing?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    label,
+    startMonth: data.startMonth || '',
+    endMonth: data.endMonth || '',
+    note: String(data.note || '').trim()
+  };
+  if (existing) {
+    Object.assign(existing, record);
+  } else {
+    state.manualTerms.push(record);
+  }
+  elements.manualTermForm.reset();
+  renderAll();
+  try {
+    await saveCloudRecord('manualTerms', record);
+  } catch (error) {
+    setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
+  }
+});
+
+elements.manualTeacherForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const data = Object.fromEntries(new FormData(elements.manualTeacherForm).entries());
+  const name = String(data.name || '').trim();
+  if (!name) return;
+  const existing = (state.manualTeachers || []).find((teacher) => teacher.name === name);
+  const record = {
+    id: existing?.id || nowId('manual_teacher'),
+    createdAt: existing?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    name,
+    subject: String(data.subject || '').trim(),
+    defaultShare: parseNumber(data.defaultShare),
+    defaultFixedRate: parseNumber(data.defaultFixedRate),
+    contact: String(data.contact || '').trim(),
+    note: String(data.note || '').trim()
+  };
+  if (existing) {
+    Object.assign(existing, record);
+  } else {
+    state.manualTeachers.push(record);
+  }
+  elements.manualTeacherForm.reset();
+  renderAll();
+  try {
+    await saveCloudRecord('manualTeachers', record);
+  } catch (error) {
+    setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
+  }
+});
+
 elements.manualStudentForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const data = Object.fromEntries(new FormData(elements.manualStudentForm).entries());
@@ -2410,6 +2534,10 @@ elements.previewPayrollRun.addEventListener('click', () => {
         const block = selectedPayrollRosterBlock();
         if (block && !elements.payrollCalcTeacher.value.trim()) {
           elements.payrollCalcTeacher.value = block.teacherSheet || '';
+        }
+        if (block?.source === 'manualCourse') {
+          elements.payrollCalcShare.value = block.defaultShare || elements.payrollCalcShare.value || '50';
+          elements.payrollCalcFixedRate.value = block.defaultFixedRate || '';
         }
       }
     } else {
@@ -2853,6 +2981,8 @@ document.querySelector('#clearAll').addEventListener('click', () => {
   state.payrollRuns.splice(0);
   state.studentNotes.splice(0);
   state.manualStudents.splice(0);
+  state.manualTerms.splice(0);
+  state.manualTeachers.splice(0);
   state.manualCourses.splice(0);
   state.manualCourseEnrollments.splice(0);
   state.studentProfiles = {};
