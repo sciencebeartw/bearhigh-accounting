@@ -47,6 +47,7 @@
         <button class="tab" data-tab="events" type="button">異動</button>
         <button class="tab" data-tab="payroll" type="button">薪資</button>
         <button class="tab" data-tab="students" type="button">學生</button>
+        <button class="tab" data-tab="accounting" type="button">會計</button>
         <button class="tab" data-tab="import" type="button">匯入</button>
         <button class="tab" data-tab="records" type="button">紀錄</button>
       </nav>
@@ -540,6 +541,10 @@
               <input name="tuitionAmount" inputmode="numeric" placeholder="可沿用預設學費">
             </label>
             <label>
+              <span>應收到期日</span>
+              <input name="dueDate" type="date">
+            </label>
+            <label>
               <span>繳費日期</span>
               <input name="paymentDate" type="date">
             </label>
@@ -717,6 +722,181 @@
               </tr>
             </thead>
               <tbody id="classRosterRows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="panel" data-panel="accounting">
+        <section class="import-summary" id="accountingSummary"></section>
+
+        <section class="section-block">
+          <div class="section-heading">
+            <div>
+              <h2>應收帳款</h2>
+              <p class="muted">學生加入科目後會自動產生應收；部分收款、催收狀態與作廢都在這裡處理。</p>
+            </div>
+            <button class="ghost" id="exportReceivablesCsv" type="button">匯出應收 CSV</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>學生</th>
+                  <th>課程</th>
+                  <th>到期日</th>
+                  <th>應收</th>
+                  <th>已收</th>
+                  <th>未收</th>
+                  <th>狀態</th>
+                  <th>催收</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="receivableRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="section-block">
+          <div class="section-heading">
+            <div>
+              <h2>記一筆收款</h2>
+              <p class="muted">每一筆實際收款會進收款流水帳，並回寫該學生的應收餘額。</p>
+            </div>
+          </div>
+          <form class="form-grid compact-form" id="paymentLedgerForm">
+            <label>
+              <span>應收項目</span>
+              <select name="receivableId" id="paymentReceivable" required></select>
+            </label>
+            <label>
+              <span>收款日期</span>
+              <input name="date" type="date" required>
+            </label>
+            <label>
+              <span>金額</span>
+              <input name="amount" inputmode="numeric" required>
+            </label>
+            <label>
+              <span>付款方式</span>
+              <select name="method">
+                <option value="轉帳">轉帳</option>
+                <option value="現金">現金</option>
+                <option value="刷卡">刷卡</option>
+                <option value="其他">其他</option>
+              </select>
+            </label>
+            <label>
+              <span>入帳科目</span>
+              <select name="assetAccountId" id="paymentAssetAccount"></select>
+            </label>
+            <label class="wide">
+              <span>備註</span>
+              <input name="note" autocomplete="off">
+            </label>
+            <div class="actions wide">
+              <button class="primary" type="submit">記入收款</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="section-block">
+          <div class="section-heading">
+            <div>
+              <h2>收款流水帳</h2>
+              <p class="muted">作廢收款會保留原紀錄並新增一筆負數沖銷。</p>
+            </div>
+            <button class="ghost" id="exportPaymentLedgerCsv" type="button">匯出流水 CSV</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>學生</th>
+                  <th>課程</th>
+                  <th>方式</th>
+                  <th>科目</th>
+                  <th>金額</th>
+                  <th>狀態</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="paymentLedgerRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="section-block">
+          <div class="section-heading">
+            <div>
+              <h2>正式報表</h2>
+              <p class="muted">目前先做補習班帳務核心：損益、現金流、應收帳齡、收入月報。</p>
+            </div>
+            <button class="ghost" id="exportAccountingReportsCsv" type="button">匯出報表 CSV</button>
+          </div>
+          <div class="accounting-report-grid">
+            <div class="report-card">
+              <h3>損益表</h3>
+              <div id="profitLossReport" class="mini-report"></div>
+            </div>
+            <div class="report-card">
+              <h3>現金流</h3>
+              <div id="cashFlowReport" class="mini-report"></div>
+            </div>
+            <div class="report-card">
+              <h3>應收帳齡</h3>
+              <div id="agingReport" class="mini-report"></div>
+            </div>
+            <div class="report-card">
+              <h3>收入分科目 / 月報</h3>
+              <div id="incomeByMonthReport" class="mini-report"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section-block">
+          <div class="section-heading">
+            <div>
+              <h2>會計科目表</h2>
+              <p class="muted">第一版固定使用補習班帳務所需科目，避免日常記帳時選錯。</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>代碼</th>
+                  <th>科目</th>
+                  <th>類型</th>
+                  <th>用途</th>
+                </tr>
+              </thead>
+              <tbody id="accountRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="section-block">
+          <div class="section-heading">
+            <div>
+              <h2>審計紀錄</h2>
+              <p class="muted">記錄誰新增、修改、作廢、沖銷了哪一筆帳務資料。</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>時間</th>
+                  <th>使用者</th>
+                  <th>動作</th>
+                  <th>資料</th>
+                  <th>備註</th>
+                </tr>
+              </thead>
+              <tbody id="auditLogRows"></tbody>
             </table>
           </div>
         </section>

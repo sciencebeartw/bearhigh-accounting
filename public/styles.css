@@ -800,11 +800,74 @@ tr.is-selected td {
   margin: 0;
 }
 
+.inline-select {
+  min-height: 34px;
+  min-width: 112px;
+  padding: 5px 8px;
+}
+
+.is-void td {
+  background: #f6f8f9;
+  color: #7a8790;
+  text-decoration: line-through;
+}
+
+.is-reversal td {
+  background: #f4fbff;
+  color: #1d6f95;
+}
+
+.accounting-report-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.report-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.report-card h3 {
+  font-size: 0.98rem;
+  margin: 0 0 10px;
+}
+
+.mini-report {
+  display: grid;
+  gap: 8px;
+}
+
+.mini-report-row {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 7px 0;
+}
+
+.mini-report-row:last-child {
+  border-bottom: 0;
+}
+
+.mini-report-row span {
+  color: var(--muted);
+}
+
+.mini-report-row strong {
+  font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 860px) {
   .form-grid,
   .filter-grid,
   .detail-form,
   .profile-grid,
+  .accounting-report-grid,
   .record-grid,
   .split-view {
     grid-template-columns: 1fr;

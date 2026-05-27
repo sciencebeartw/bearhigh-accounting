@@ -52,7 +52,23 @@ state.manualTerms ||= [];
 state.manualTeachers ||= [];
 state.manualCourses ||= [];
 state.manualCourseEnrollments ||= [];
+state.accountingAccounts ||= defaultAccountingAccounts();
+state.receivables ||= [];
+state.paymentLedger ||= [];
+state.auditLogs ||= [];
 state.importSnapshot ||= null;
+
+function defaultAccountingAccounts() {
+  return [
+    { id: 'income_tuition', code: '4101', name: '學費收入', type: '收入', purpose: '學生學費、分科收入與已收款認列' },
+    { id: 'discount_package', code: '4201', name: '合報優惠', type: '折扣', purpose: '兩科、三科合報造成的折扣' },
+    { id: 'discount_voucher', code: '4202', name: '學費抵用券', type: '折扣', purpose: '抵用券、折抵與其他學費優惠' },
+    { id: 'ar_tuition', code: '1101', name: '學費應收', type: '應收', purpose: '尚未收齊的學生學費' },
+    { id: 'cash_on_hand', code: '1001', name: '現金', type: '現金', purpose: '現金收款' },
+    { id: 'bank_main', code: '1002', name: '銀行帳戶', type: '銀行', purpose: '轉帳、匯款與主要銀行入帳' },
+    { id: 'payroll_expense', code: '5101', name: '老師薪資費用', type: '薪資費用', purpose: '月底老師薪資與分潤成本' }
+  ];
+}
 
 const elements = {
   appShell: document.querySelector('#appShell'),
@@ -96,8 +112,23 @@ const elements = {
   allocationTotal: document.querySelector('#allocationTotal'),
   allocationWarnings: document.querySelector('#allocationWarnings'),
   allocationRows: document.querySelector('#allocationRows'),
+  accountRows: document.querySelector('#accountRows'),
+  accountingSummary: document.querySelector('#accountingSummary'),
+  agingReport: document.querySelector('#agingReport'),
+  auditLogRows: document.querySelector('#auditLogRows'),
+  cashFlowReport: document.querySelector('#cashFlowReport'),
   eventRows: document.querySelector('#eventRows'),
+  exportAccountingReportsCsv: document.querySelector('#exportAccountingReportsCsv'),
+  exportPaymentLedgerCsv: document.querySelector('#exportPaymentLedgerCsv'),
+  exportReceivablesCsv: document.querySelector('#exportReceivablesCsv'),
+  incomeByMonthReport: document.querySelector('#incomeByMonthReport'),
   payrollRows: document.querySelector('#payrollRows'),
+  paymentAssetAccount: document.querySelector('#paymentAssetAccount'),
+  paymentLedgerForm: document.querySelector('#paymentLedgerForm'),
+  paymentLedgerRows: document.querySelector('#paymentLedgerRows'),
+  paymentReceivable: document.querySelector('#paymentReceivable'),
+  profitLossReport: document.querySelector('#profitLossReport'),
+  receivableRows: document.querySelector('#receivableRows'),
   tuitionRecords: document.querySelector('#tuitionRecords'),
   payrollRecords: document.querySelector('#payrollRecords'),
   importStatus: document.querySelector('#importStatus'),
@@ -161,6 +192,10 @@ function loadState() {
       manualTeachers: [],
       manualCourses: [],
       manualCourseEnrollments: [],
+      accountingAccounts: defaultAccountingAccounts(),
+      receivables: [],
+      paymentLedger: [],
+      auditLogs: [],
       importSnapshot: null
     };
   } catch {
@@ -173,6 +208,10 @@ function loadState() {
       manualTeachers: [],
       manualCourses: [],
       manualCourseEnrollments: [],
+      accountingAccounts: defaultAccountingAccounts(),
+      receivables: [],
+      paymentLedger: [],
+      auditLogs: [],
       importSnapshot: null
     };
   }
@@ -191,6 +230,10 @@ function saveState() {
     manualTeachers: state.manualTeachers,
     manualCourses: state.manualCourses,
     manualCourseEnrollments: state.manualCourseEnrollments,
+    accountingAccounts: state.accountingAccounts,
+    receivables: state.receivables,
+    paymentLedger: state.paymentLedger,
+    auditLogs: state.auditLogs,
     importSnapshot: null
   };
   localStorage.setItem(storageKey, JSON.stringify(persistedState));
@@ -203,6 +246,9 @@ function saveState() {
     state.manualTeachers.length +
     state.manualCourses.length +
     state.manualCourseEnrollments.length +
+    state.receivables.length +
+    state.paymentLedger.length +
+    state.auditLogs.length +
     Object.keys(state.courseSessionPlans).length;
   elements.storageStatus.textContent = `本機草稿 ${draftCount} 筆`;
 }
@@ -284,6 +330,123 @@ function parseNumber(value) {
   if (!normalized) return 0;
   const number = Number(normalized);
   return Number.isFinite(number) ? number : 0;
+}
+
+function todayIso() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function currentMonthIso() {
+  return todayIso().slice(0, 7);
+}
+
+function accountById(id) {
+  return (state.accountingAccounts || defaultAccountingAccounts()).find((account) => account.id === id) || null;
+}
+
+function accountName(id) {
+  return accountById(id)?.name || id || '';
+}
+
+function normalizeAccountingAccounts() {
+  const existing = new Map((state.accountingAccounts || []).filter((account) => account?.id).map((account) => [account.id, account]));
+  state.accountingAccounts = defaultAccountingAccounts().map((account) => ({
+    ...account,
+    ...(existing.get(account.id) || {})
+  }));
+}
+
+function postedPaymentAmountForReceivable(receivableId) {
+  return (state.paymentLedger || [])
+    .filter((payment) => payment.receivableId === receivableId && payment.status === 'posted')
+    .reduce((sum, payment) => sum + parseNumber(payment.amount), 0);
+}
+
+function receivableStatus(receivable) {
+  if (receivable.status === 'void') return 'void';
+  const balance = Math.max(0, parseNumber(receivable.balance));
+  const amount = Math.max(0, parseNumber(receivable.amount));
+  if (amount > 0 && balance <= 0) return 'paid';
+  if (postedPaymentAmountForReceivable(receivable.id) > 0) return 'partial';
+  if (receivable.dueDate && receivable.dueDate < todayIso()) return 'overdue';
+  return 'open';
+}
+
+function receivableStatusLabel(status) {
+  return {
+    open: '未收',
+    partial: '部分收款',
+    paid: '已收齊',
+    overdue: '逾期',
+    void: '已作廢'
+  }[status] || status || '';
+}
+
+function recomputeReceivable(receivable) {
+  const paidAmount = receivable.status === 'void' ? 0 : postedPaymentAmountForReceivable(receivable.id);
+  const amount = Math.max(0, parseNumber(receivable.amount));
+  receivable.paidAmount = Math.max(0, paidAmount);
+  receivable.balance = receivable.status === 'void' ? 0 : Math.max(0, amount - paidAmount);
+  receivable.status = receivable.status === 'void' ? 'void' : receivableStatus(receivable);
+  receivable.updatedAt = new Date().toISOString();
+  return receivable;
+}
+
+function recomputeAllReceivables() {
+  for (const receivable of state.receivables || []) {
+    recomputeReceivable(receivable);
+  }
+}
+
+function auditUser() {
+  return currentUser?.email || currentUser?.uid || 'local';
+}
+
+function diffSummary(before, after) {
+  if (!before) return '新增';
+  const keys = Array.from(new Set([...Object.keys(before || {}), ...Object.keys(after || {})]));
+  return keys
+    .filter((key) => JSON.stringify(before?.[key]) !== JSON.stringify(after?.[key]))
+    .slice(0, 8)
+    .join('、') || '無欄位變更';
+}
+
+async function recordAudit(entityType, entityId, action, before, after, note = '') {
+  const record = {
+    id: nowId('audit'),
+    createdAt: new Date().toISOString(),
+    user: auditUser(),
+    entityType,
+    entityId,
+    action,
+    before: before || null,
+    after: after || null,
+    note,
+    summary: diffSummary(before, after)
+  };
+  state.auditLogs.push(record);
+  if (state.auditLogs.length > 300) {
+    state.auditLogs = state.auditLogs.slice(-300);
+  }
+  try {
+    await saveCloudRecord('auditLogs', record);
+  } catch {
+    // 審計紀錄雲端同步失敗時仍保留本機資料，避免阻斷主流程。
+  }
+  return record;
+}
+
+async function saveReceivable(record) {
+  recomputeReceivable(record);
+  await saveCloudRecord('receivables', record);
+}
+
+async function savePaymentRecord(record) {
+  await saveCloudRecord('paymentLedger', record);
 }
 
 function columnIndex(column) {
@@ -377,6 +540,107 @@ function manualEnrollmentForStudentCourse(studentId, courseId) {
   return (state.manualCourseEnrollments || []).find((enrollment) => (
     enrollment.studentId === studentId && enrollment.courseId === courseId
   )) || null;
+}
+
+function receivableIdForEnrollment(enrollmentId) {
+  return `receivable_${safeFirebaseKey(enrollmentId)}`;
+}
+
+function paymentIdForEnrollment(enrollmentId) {
+  return `payment_from_${safeFirebaseKey(enrollmentId)}`;
+}
+
+function receivableById(id) {
+  return (state.receivables || []).find((receivable) => receivable.id === id) || null;
+}
+
+function sourcePaymentForEnrollment(enrollmentId) {
+  return (state.paymentLedger || []).find((payment) => payment.sourceEnrollmentId === enrollmentId && payment.source === 'manualEnrollmentInitial') || null;
+}
+
+async function upsertReceivableFromEnrollment(enrollment, course, student) {
+  const id = receivableIdForEnrollment(enrollment.id);
+  const existingIndex = state.receivables.findIndex((item) => item.id === id);
+  const before = existingIndex >= 0 ? { ...state.receivables[existingIndex] } : null;
+  const amount = Math.max(0, Math.round(parseNumber(enrollment.tuitionAmount || course?.defaultTuition)));
+  const base = before || {};
+  const record = {
+    ...base,
+    id,
+    source: 'manualEnrollment',
+    sourceEnrollmentId: enrollment.id,
+    enrollmentId: enrollment.id,
+    studentId: enrollment.studentId,
+    studentName: enrollment.studentName || studentName(student),
+    courseId: enrollment.courseId,
+    courseName: enrollment.courseName || course?.courseName || '',
+    accountId: 'ar_tuition',
+    incomeAccountId: 'income_tuition',
+    originalAmount: amount,
+    discountAmount: 0,
+    amount,
+    issuedDate: enrollment.createdAt?.slice(0, 10) || todayIso(),
+    dueDate: enrollment.dueDate || enrollment.paymentDate || base.dueDate || todayIso(),
+    followUpStatus: base.followUpStatus || '未追蹤',
+    note: enrollment.note || base.note || '',
+    createdAt: base.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  if (base.status === 'void') {
+    record.status = 'void';
+    record.voidedAt = base.voidedAt || '';
+    record.voidReason = base.voidReason || '';
+  }
+  recomputeReceivable(record);
+  if (existingIndex >= 0) {
+    state.receivables[existingIndex] = record;
+  } else {
+    state.receivables.push(record);
+  }
+  await recordAudit('receivable', id, before ? 'update' : 'create', before, record, '由網頁報名同步應收');
+  try {
+    await saveReceivable(record);
+  } catch (error) {
+    setCloudStatus(`應收雲端寫入失敗：${error.code || error.message}`);
+  }
+
+  const existingPayment = sourcePaymentForEnrollment(enrollment.id);
+  if (enrollment.paymentDate && amount > 0) {
+    const paymentBefore = existingPayment ? { ...existingPayment } : null;
+    const payment = {
+      ...(existingPayment || {}),
+      id: existingPayment?.id || paymentIdForEnrollment(enrollment.id),
+      receivableId: id,
+      source: 'manualEnrollmentInitial',
+      sourceEnrollmentId: enrollment.id,
+      studentId: enrollment.studentId,
+      studentName: record.studentName,
+      courseName: record.courseName,
+      date: enrollment.paymentDate,
+      amount,
+      method: existingPayment?.method || '轉帳',
+      assetAccountId: existingPayment?.assetAccountId || 'bank_main',
+      incomeAccountId: 'income_tuition',
+      note: existingPayment?.note || '報名表填繳費日期，自動建立收款',
+      status: existingPayment?.status || 'posted',
+      createdAt: existingPayment?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    if (existingPayment) {
+      Object.assign(existingPayment, payment);
+    } else {
+      state.paymentLedger.push(payment);
+    }
+    recomputeReceivable(record);
+    await recordAudit('payment', payment.id, paymentBefore ? 'update' : 'create', paymentBefore, payment, '由網頁報名繳費日期同步收款');
+    try {
+      await savePaymentRecord(payment);
+      await saveReceivable(record);
+    } catch (error) {
+      setCloudStatus(`收款雲端寫入失敗：${error.code || error.message}`);
+    }
+  }
+  return record;
 }
 
 function studentName(student) {
@@ -1922,6 +2186,11 @@ async function loadCloudManualRecords() {
   state.manualTeachers = mergeRecordsById(state.manualTeachers, Object.values(manual.manualTeachers || {}));
   state.manualCourses = mergeRecordsById(state.manualCourses, Object.values(manual.manualCourses || {}));
   state.manualCourseEnrollments = mergeRecordsById(state.manualCourseEnrollments, Object.values(manual.manualCourseEnrollments || {}));
+  state.accountingAccounts = mergeRecordsById(defaultAccountingAccounts(), Object.values(manual.accountingAccounts || {}));
+  state.receivables = mergeRecordsById(state.receivables, Object.values(manual.receivables || {}));
+  state.paymentLedger = mergeRecordsById(state.paymentLedger, Object.values(manual.paymentLedger || {}));
+  state.auditLogs = mergeRecordsById(state.auditLogs, Object.values(manual.auditLogs || {}));
+  recomputeAllReceivables();
   const remoteSessionPlans = {};
   for (const plan of Object.values(manual.courseSessionPlans || {})) {
     if (plan?.id) remoteSessionPlans[plan.id] = plan;
@@ -2000,6 +2269,187 @@ function renderPayroll() {
       </tr>
     `).join('')
     : emptyRow(7);
+}
+
+function accountingSummary() {
+  recomputeAllReceivables();
+  const activeReceivables = (state.receivables || []).filter((row) => row.status !== 'void');
+  const postedPayments = (state.paymentLedger || []).filter((row) => row.status === 'posted');
+  const receivableTotal = activeReceivables.reduce((sum, row) => sum + parseNumber(row.amount), 0);
+  const paidTotal = postedPayments.reduce((sum, row) => sum + parseNumber(row.amount), 0);
+  const balanceTotal = activeReceivables.reduce((sum, row) => sum + parseNumber(row.balance), 0);
+  const overdueTotal = activeReceivables
+    .filter((row) => row.status === 'overdue')
+    .reduce((sum, row) => sum + parseNumber(row.balance), 0);
+  const currentMonth = currentMonthIso();
+  const monthIncome = postedPayments
+    .filter((row) => String(row.date || '').startsWith(currentMonth))
+    .reduce((sum, row) => sum + parseNumber(row.amount), 0);
+  return { activeReceivables, postedPayments, receivableTotal, paidTotal, balanceTotal, overdueTotal, monthIncome };
+}
+
+function renderMiniReport(rows) {
+  if (!rows.length) return '<p class="empty">尚無資料</p>';
+  return rows.map(([label, value]) => `
+    <div class="mini-report-row">
+      <span>${escapeHtml(label)}</span>
+      <strong>${formatMoney(value)}</strong>
+    </div>
+  `).join('');
+}
+
+function buildAccountingReports() {
+  const { activeReceivables, postedPayments } = accountingSummary();
+  const income = postedPayments.reduce((sum, payment) => sum + parseNumber(payment.amount), 0);
+  const salaryExpense = (state.payrollRuns || []).reduce((sum, row) => sum + parseNumber(row.total), 0);
+  const profitLoss = [
+    ['學費收入', income],
+    ['老師薪資費用', -salaryExpense],
+    ['帳務淨額', income - salaryExpense]
+  ];
+
+  const cashByAccount = new Map();
+  for (const payment of postedPayments) {
+    const key = accountName(payment.assetAccountId);
+    cashByAccount.set(key, (cashByAccount.get(key) || 0) + parseNumber(payment.amount));
+  }
+  const cashFlow = Array.from(cashByAccount.entries()).sort((a, b) => a[0].localeCompare(b[0], 'zh-Hant'));
+
+  const today = new Date(`${todayIso()}T00:00:00`);
+  const agingBuckets = new Map([
+    ['未到期 / 當期', 0],
+    ['逾期 1-30 天', 0],
+    ['逾期 31-60 天', 0],
+    ['逾期 61 天以上', 0]
+  ]);
+  for (const receivable of activeReceivables) {
+    const balance = parseNumber(receivable.balance);
+    if (balance <= 0) continue;
+    const due = receivable.dueDate ? new Date(`${receivable.dueDate}T00:00:00`) : today;
+    const days = Math.floor((today - due) / 86400000);
+    const bucket = days <= 0 ? '未到期 / 當期' : days <= 30 ? '逾期 1-30 天' : days <= 60 ? '逾期 31-60 天' : '逾期 61 天以上';
+    agingBuckets.set(bucket, (agingBuckets.get(bucket) || 0) + balance);
+  }
+  const aging = Array.from(agingBuckets.entries());
+
+  const incomeByMonth = new Map();
+  for (const payment of postedPayments) {
+    const key = `${String(payment.date || '').slice(0, 7) || '未填月份'}｜${accountName(payment.incomeAccountId || 'income_tuition')}`;
+    incomeByMonth.set(key, (incomeByMonth.get(key) || 0) + parseNumber(payment.amount));
+  }
+
+  return {
+    profitLoss,
+    cashFlow,
+    aging,
+    incomeByMonth: Array.from(incomeByMonth.entries()).sort((a, b) => a[0].localeCompare(b[0], 'zh-Hant'))
+  };
+}
+
+function syncAccountingForms() {
+  const openReceivables = (state.receivables || [])
+    .filter((receivable) => receivable.status !== 'void' && parseNumber(receivable.balance) > 0)
+    .sort((a, b) => `${a.dueDate || ''} ${a.studentName || ''}`.localeCompare(`${b.dueDate || ''} ${b.studentName || ''}`, 'zh-Hant'));
+  elements.paymentReceivable.innerHTML = openReceivables.length
+    ? openReceivables.map((receivable) => `
+      <option value="${escapeHtml(receivable.id)}">${escapeHtml(receivable.studentName)}｜${escapeHtml(receivable.courseName)}｜未收 ${formatMoney(receivable.balance)}</option>
+    `).join('')
+    : '<option value="">尚無未收應收</option>';
+  elements.paymentReceivable.disabled = !openReceivables.length;
+
+  const assetAccounts = (state.accountingAccounts || []).filter((account) => ['現金', '銀行'].includes(account.type));
+  elements.paymentAssetAccount.innerHTML = assetAccounts
+    .map((account) => `<option value="${escapeHtml(account.id)}">${escapeHtml(account.name)}</option>`)
+    .join('');
+}
+
+function renderAccounting() {
+  normalizeAccountingAccounts();
+  recomputeAllReceivables();
+  syncAccountingForms();
+  const summary = accountingSummary();
+  elements.accountingSummary.innerHTML = [
+    summaryCell('應收總額', summary.receivableTotal),
+    summaryCell('已收款', summary.paidTotal),
+    summaryCell('未收款', summary.balanceTotal),
+    summaryCell('逾期未收', summary.overdueTotal),
+    summaryCell('本月收入', summary.monthIncome)
+  ].join('');
+
+  elements.accountRows.innerHTML = (state.accountingAccounts || []).map((account) => `
+    <tr>
+      <td>${escapeHtml(account.code)}</td>
+      <td><strong>${escapeHtml(account.name)}</strong></td>
+      <td>${escapeHtml(account.type)}</td>
+      <td>${escapeHtml(account.purpose)}</td>
+    </tr>
+  `).join('');
+
+  elements.receivableRows.innerHTML = state.receivables.length
+    ? state.receivables
+      .slice()
+      .sort((a, b) => `${a.status === 'void' ? 'z' : 'a'} ${a.dueDate || ''} ${a.studentName || ''}`.localeCompare(`${b.status === 'void' ? 'z' : 'a'} ${b.dueDate || ''} ${b.studentName || ''}`, 'zh-Hant'))
+      .map((receivable) => `
+        <tr class="${receivable.status === 'void' ? 'is-void' : ''}">
+          <td><strong>${escapeHtml(receivable.studentName)}</strong></td>
+          <td>${escapeHtml(receivable.courseName)}</td>
+          <td>${escapeHtml(receivable.dueDate || '')}</td>
+          <td class="money">${formatMoney(receivable.amount)}</td>
+          <td class="money">${formatMoney(receivable.paidAmount)}</td>
+          <td class="money">${formatMoney(receivable.balance)}</td>
+          <td>${escapeHtml(receivableStatusLabel(receivable.status))}</td>
+          <td>
+            <select class="inline-select" data-receivable-followup="${escapeHtml(receivable.id)}" ${receivable.status === 'void' ? 'disabled' : ''}>
+              ${['未追蹤', '已提醒', '待確認', '不用追'].map((status) => `<option value="${status}" ${receivable.followUpStatus === status ? 'selected' : ''}>${status}</option>`).join('')}
+            </select>
+          </td>
+          <td>
+            <button class="ghost small" type="button" data-fill-payment="${escapeHtml(receivable.id)}" ${receivable.status === 'void' || parseNumber(receivable.balance) <= 0 ? 'disabled' : ''}>收款</button>
+            <button class="danger small" type="button" data-void-receivable="${escapeHtml(receivable.id)}" ${receivable.status === 'void' || parseNumber(receivable.paidAmount) > 0 ? 'disabled' : ''}>作廢</button>
+          </td>
+        </tr>
+      `).join('')
+    : emptyRow(9);
+
+  elements.paymentLedgerRows.innerHTML = state.paymentLedger.length
+    ? state.paymentLedger
+      .slice()
+      .sort((a, b) => `${b.date || ''} ${b.createdAt || ''}`.localeCompare(`${a.date || ''} ${a.createdAt || ''}`))
+      .map((payment) => `
+        <tr class="${payment.voidedAt ? 'is-void' : payment.amount < 0 ? 'is-reversal' : ''}">
+          <td>${escapeHtml(payment.date || '')}</td>
+          <td><strong>${escapeHtml(payment.studentName || '')}</strong></td>
+          <td>${escapeHtml(payment.courseName || '')}</td>
+          <td>${escapeHtml(payment.method || '')}</td>
+          <td>${escapeHtml(accountName(payment.assetAccountId))}</td>
+          <td class="money">${formatMoney(payment.amount)}</td>
+          <td>${escapeHtml(payment.voidedAt ? '已沖銷' : payment.reversalOf ? '沖銷' : '入帳')}</td>
+          <td><button class="danger small" type="button" data-void-payment="${escapeHtml(payment.id)}" ${payment.status !== 'posted' || payment.reversalOf || payment.voidedAt ? 'disabled' : ''}>作廢收款</button></td>
+        </tr>
+      `).join('')
+    : emptyRow(8);
+
+  const reports = buildAccountingReports();
+  elements.profitLossReport.innerHTML = renderMiniReport(reports.profitLoss);
+  elements.cashFlowReport.innerHTML = renderMiniReport(reports.cashFlow);
+  elements.agingReport.innerHTML = renderMiniReport(reports.aging);
+  elements.incomeByMonthReport.innerHTML = renderMiniReport(reports.incomeByMonth);
+
+  elements.auditLogRows.innerHTML = state.auditLogs.length
+    ? state.auditLogs
+      .slice()
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+      .slice(0, 100)
+      .map((log) => `
+        <tr>
+          <td>${escapeHtml(log.createdAt || '')}</td>
+          <td>${escapeHtml(log.user || '')}</td>
+          <td>${escapeHtml(log.action || '')}</td>
+          <td>${escapeHtml(`${log.entityType || ''} ${log.entityId || ''}`)}</td>
+          <td>${escapeHtml(log.note || log.summary || '')}</td>
+        </tr>
+      `).join('')
+    : emptyRow(5);
 }
 
 function renderRecords() {
@@ -2155,6 +2605,7 @@ function renderAll() {
   renderEvents();
   renderPayroll();
   renderPayrollPreview();
+  renderAccounting();
   renderRecords();
   renderManualCourses();
   renderStudentCenter();
@@ -2409,6 +2860,7 @@ elements.manualEnrollmentForm.addEventListener('submit', async (event) => {
     studentId: data.studentId,
     studentName: studentName(student),
     tuitionAmount: Math.round(parseNumber(data.tuitionAmount || course.defaultTuition)),
+    dueDate: data.dueDate || data.paymentDate || todayIso(),
     paymentDate: data.paymentDate || '',
     note: String(data.note || '').trim()
   };
@@ -2424,6 +2876,8 @@ elements.manualEnrollmentForm.addEventListener('submit', async (event) => {
   } catch (error) {
     setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
   }
+  await upsertReceivableFromEnrollment(record, course, student);
+  renderAll();
 });
 
 elements.payrollForm.addEventListener('submit', async (event) => {
@@ -2618,6 +3072,188 @@ elements.exportPayrollPreviewXls.addEventListener('click', () => {
     filenameSafe(payrollPreview.courseName)
   ].filter(Boolean).join('-');
   downloadFile(`${filename}.xls`, buildPayrollXls(payrollPreview), 'application/vnd.ms-excel;charset=utf-8');
+});
+
+elements.paymentLedgerForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const data = Object.fromEntries(new FormData(elements.paymentLedgerForm).entries());
+  const receivable = receivableById(data.receivableId);
+  if (!receivable || receivable.status === 'void') return;
+  const amount = Math.round(parseNumber(data.amount));
+  if (amount <= 0) return;
+  const payment = {
+    id: nowId('payment'),
+    receivableId: receivable.id,
+    studentId: receivable.studentId,
+    studentName: receivable.studentName,
+    courseName: receivable.courseName,
+    date: data.date || todayIso(),
+    amount,
+    method: data.method || '轉帳',
+    assetAccountId: data.assetAccountId || 'bank_main',
+    incomeAccountId: receivable.incomeAccountId || 'income_tuition',
+    note: String(data.note || '').trim(),
+    status: 'posted',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  const beforeReceivable = { ...receivable };
+  state.paymentLedger.push(payment);
+  recomputeReceivable(receivable);
+  elements.paymentLedgerForm.reset();
+  renderAll();
+  await recordAudit('payment', payment.id, 'create', null, payment, '手動記入收款');
+  await recordAudit('receivable', receivable.id, 'update', beforeReceivable, receivable, '收款後更新應收餘額');
+  renderAll();
+  try {
+    await savePaymentRecord(payment);
+    await saveReceivable(receivable);
+  } catch (error) {
+    setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
+  }
+});
+
+elements.receivableRows.addEventListener('click', async (event) => {
+  const fillButton = event.target.closest('[data-fill-payment]');
+  if (fillButton) {
+    const receivable = receivableById(fillButton.dataset.fillPayment);
+    if (!receivable) return;
+    elements.paymentReceivable.value = receivable.id;
+    elements.paymentLedgerForm.elements.date.value = todayIso();
+    elements.paymentLedgerForm.elements.amount.value = Math.max(0, Math.round(parseNumber(receivable.balance))) || '';
+    elements.paymentLedgerForm.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    return;
+  }
+
+  const voidButton = event.target.closest('[data-void-receivable]');
+  if (voidButton) {
+    const receivable = receivableById(voidButton.dataset.voidReceivable);
+    if (!receivable || receivable.status === 'void' || parseNumber(receivable.paidAmount) > 0) return;
+    const before = { ...receivable };
+    receivable.status = 'void';
+    receivable.balance = 0;
+    receivable.voidedAt = new Date().toISOString();
+    receivable.voidReason = '使用者作廢應收';
+    receivable.updatedAt = new Date().toISOString();
+    renderAll();
+    await recordAudit('receivable', receivable.id, 'void', before, receivable, '作廢應收');
+    renderAll();
+    try {
+      await saveReceivable(receivable);
+    } catch (error) {
+      setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
+    }
+  }
+});
+
+elements.receivableRows.addEventListener('change', async (event) => {
+  const select = event.target.closest('[data-receivable-followup]');
+  if (!select) return;
+  const receivable = receivableById(select.dataset.receivableFollowup);
+  if (!receivable) return;
+  const before = { ...receivable };
+  receivable.followUpStatus = select.value;
+  receivable.updatedAt = new Date().toISOString();
+  renderAll();
+  await recordAudit('receivable', receivable.id, 'update', before, receivable, '更新催收狀態');
+  renderAll();
+  try {
+    await saveReceivable(receivable);
+  } catch (error) {
+    setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
+  }
+});
+
+elements.paymentLedgerRows.addEventListener('click', async (event) => {
+  const voidButton = event.target.closest('[data-void-payment]');
+  if (!voidButton) return;
+  const payment = (state.paymentLedger || []).find((row) => row.id === voidButton.dataset.voidPayment);
+  if (!payment || payment.status !== 'posted' || payment.reversalOf || payment.voidedAt) return;
+  const receivable = receivableById(payment.receivableId);
+  const paymentBefore = { ...payment };
+  const receivableBefore = receivable ? { ...receivable } : null;
+  payment.voidedAt = new Date().toISOString();
+  payment.voidReason = '使用者作廢收款';
+  payment.updatedAt = new Date().toISOString();
+  const reversal = {
+    id: nowId('reversal'),
+    receivableId: payment.receivableId,
+    studentId: payment.studentId,
+    studentName: payment.studentName,
+    courseName: payment.courseName,
+    date: todayIso(),
+    amount: -Math.abs(parseNumber(payment.amount)),
+    method: payment.method,
+    assetAccountId: payment.assetAccountId,
+    incomeAccountId: payment.incomeAccountId || 'income_tuition',
+    note: `沖銷 ${payment.id}`,
+    status: 'posted',
+    reversalOf: payment.id,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  state.paymentLedger.push(reversal);
+  if (receivable) recomputeReceivable(receivable);
+  renderAll();
+  await recordAudit('payment', payment.id, 'void', paymentBefore, payment, '作廢收款');
+  await recordAudit('payment', reversal.id, 'reverse', null, reversal, '新增沖銷分錄');
+  if (receivable) {
+    await recordAudit('receivable', receivable.id, 'update', receivableBefore, receivable, '作廢收款後更新應收餘額');
+  }
+  renderAll();
+  try {
+    await savePaymentRecord(payment);
+    await savePaymentRecord(reversal);
+    if (receivable) await saveReceivable(receivable);
+  } catch (error) {
+    setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
+  }
+});
+
+elements.exportReceivablesCsv.addEventListener('click', () => {
+  const rows = [['學生', '課程', '到期日', '應收', '已收', '未收', '狀態', '催收', '備註']];
+  for (const receivable of state.receivables || []) {
+    rows.push([
+      receivable.studentName,
+      receivable.courseName,
+      receivable.dueDate,
+      receivable.amount,
+      receivable.paidAmount,
+      receivable.balance,
+      receivableStatusLabel(receivable.status),
+      receivable.followUpStatus,
+      receivable.note
+    ]);
+  }
+  downloadFile('bearhigh-receivables.csv', toCsv(rows), 'text/csv;charset=utf-8');
+});
+
+elements.exportPaymentLedgerCsv.addEventListener('click', () => {
+  const rows = [['日期', '學生', '課程', '付款方式', '入帳科目', '金額', '狀態', '沖銷原收款', '備註']];
+  for (const payment of state.paymentLedger || []) {
+    rows.push([
+      payment.date,
+      payment.studentName,
+      payment.courseName,
+      payment.method,
+      accountName(payment.assetAccountId),
+      payment.amount,
+      payment.voidedAt ? '已沖銷' : payment.status,
+      payment.reversalOf || '',
+      payment.note
+    ]);
+  }
+  downloadFile('bearhigh-payment-ledger.csv', toCsv(rows), 'text/csv;charset=utf-8');
+});
+
+elements.exportAccountingReportsCsv.addEventListener('click', () => {
+  const reports = buildAccountingReports();
+  const rows = [['報表', '項目', '金額']];
+  for (const [label, value] of reports.profitLoss) rows.push(['損益表', label, value]);
+  for (const [label, value] of reports.cashFlow) rows.push(['現金流', label, value]);
+  for (const [label, value] of reports.aging) rows.push(['應收帳齡', label, value]);
+  for (const [label, value] of reports.incomeByMonth) rows.push(['收入分科目/月報', label, value]);
+  downloadFile('bearhigh-accounting-reports.csv', toCsv(rows), 'text/csv;charset=utf-8');
 });
 
 document.querySelector('#exportJson').addEventListener('click', () => {
@@ -2987,6 +3623,10 @@ document.querySelector('#clearAll').addEventListener('click', () => {
   state.manualTeachers.splice(0);
   state.manualCourses.splice(0);
   state.manualCourseEnrollments.splice(0);
+  state.accountingAccounts = defaultAccountingAccounts();
+  state.receivables.splice(0);
+  state.paymentLedger.splice(0);
+  state.auditLogs.splice(0);
   state.studentProfiles = {};
   state.courseSessionPlans = {};
   state.importSnapshot = null;

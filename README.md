@@ -31,6 +31,11 @@ Firebase 專案也獨立使用 `bearhigh`，避免開發期與 `sciencebear-admi
 - 學生資料中心：可依學生、分頁/cohort、班級/課程、繳費狀態與同名風險查詢。
 - CRM 檔案：學生明細可看基本資料、課程、學費欄位、手動學費、進退班異動、追蹤備註與時間軸。
 - 班級名單：選定班級/課程後可查看該班名單與指定月份的加入/退出異動，並匯出 CSV。
+- 會計核心：固定科目表包含學費收入、合報優惠、抵用券、學費應收、現金、銀行帳戶、老師薪資費用。
+- 應收帳款：學生加入科目後會自動產生應收，可記到期日、部分付款、催收狀態、已收/未收與逾期狀態。
+- 收款流水帳：每一筆實際收款都會記錄日期、金額、付款方式與入帳科目；作廢收款會保留原紀錄並新增負數沖銷。
+- 正式報表：會計頁提供損益表、現金流、應收帳齡、收入分科目/月報，並可匯出 CSV。
+- 審計紀錄：新增、修改、作廢、沖銷帳務資料會記錄操作者、原值/新值摘要與備註。
 - 匯出：本機草稿 JSON 與學費分攤 CSV。
 
 目前已接上 Firebase Google Auth 與 `bearhigh` RTDB：
@@ -41,6 +46,7 @@ Firebase 專案也獨立使用 `bearhigh`，避免開發期與 `sciencebear-admi
 - 線上新增的學生 CRM 狀態與追蹤備註也會同步到 `accounting/manual/studentProfiles` 與 `accounting/manual/studentNotes`。
 - 線上新增的堂次日期表會同步到 `accounting/manual/courseSessionPlans`，用於月底薪資試算的日期轉堂次。
 - 線上新增的學期/梯次、老師、學生、課程與報名收費會同步到 `accounting/manual/manualTerms`、`manualTeachers`、`manualStudents`、`manualCourses`、`manualCourseEnrollments`。
+- 線上新增的應收、收款流水與審計紀錄會同步到 `accounting/manual/receivables`、`paymentLedger`、`auditLogs`。
 - 登入後會讀回雲端 `accounting/manual/*`，避免換裝置後看不到先前手動紀錄。
 - `public/js/firebase-config.mjs` 不納入 Git；GitHub Pages 由 Actions 變數 `BEARHIGH_FIREBASE_API_KEY` 在部署時產生。
 
