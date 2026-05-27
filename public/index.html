@@ -380,6 +380,8 @@
         <div class="record-toolbar">
           <button class="ghost" id="exportStudentFilterCsv" type="button">匯出目前學生名單 CSV</button>
           <button class="ghost" id="exportClassRosterCsv" type="button">匯出目前班級名單 CSV</button>
+          <button class="ghost" id="exportGradeSummaryCsv" type="button">匯出年級總表 CSV</button>
+          <button class="ghost" id="exportCourseSummaryCsv" type="button">匯出班級總表 CSV</button>
           <label class="toolbar-field">
             <span>月份異動</span>
             <input id="rosterMonth" type="month">
@@ -421,6 +423,49 @@
           </label>
         </div>
 
+        <section class="section-block">
+          <div class="section-heading">
+            <h2>年級總表</h2>
+            <div class="muted">依 Numbers 分頁彙總學生、課程勾選與收費欄位。</div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>分頁 / 年級</th>
+                  <th>學生數</th>
+                  <th>課程勾選</th>
+                  <th>收費欄位</th>
+                  <th>總學收合計</th>
+                  <th>有繳費日期</th>
+                </tr>
+              </thead>
+              <tbody id="gradeOverviewRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="section-block">
+          <div class="section-heading">
+            <h2>班級總表</h2>
+            <div class="muted">依課程欄位統計人數與目前可對到的收費欄位。</div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>班級 / 課程</th>
+                  <th>分頁</th>
+                  <th>人數</th>
+                  <th>可對到收費</th>
+                  <th>收費合計</th>
+                </tr>
+              </thead>
+              <tbody id="courseOverviewRows"></tbody>
+            </table>
+          </div>
+        </section>
+
         <div class="split-view">
           <div class="table-wrap">
             <table>
@@ -454,13 +499,14 @@
             <table>
               <thead>
                 <tr>
-                  <th>學生</th>
-                  <th>分頁</th>
-                  <th>學校</th>
-                  <th>繳費狀態</th>
-                  <th>本月異動</th>
-                </tr>
-              </thead>
+                <th>學生</th>
+                <th>分頁</th>
+                <th>學校</th>
+                <th>收費</th>
+                <th>繳費狀態</th>
+                <th>本月異動</th>
+              </tr>
+            </thead>
               <tbody id="classRosterRows"></tbody>
             </table>
           </div>
