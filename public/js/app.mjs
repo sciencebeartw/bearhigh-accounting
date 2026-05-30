@@ -116,6 +116,8 @@ const elements = {
   payrollRosterBlock: document.querySelector('#payrollRosterBlock'),
   payrollSessionDates: document.querySelector('#payrollSessionDates'),
   payrollSessionSummary: document.querySelector('#payrollSessionSummary'),
+  payrollWorkflowRows: document.querySelector('#payrollWorkflowRows'),
+  payrollWorkflowSummary: document.querySelector('#payrollWorkflowSummary'),
   previewPayrollRun: document.querySelector('#previewPayrollRun'),
   savePayrollEvent: document.querySelector('#savePayrollEvent'),
   savePayrollSessionPlan: document.querySelector('#savePayrollSessionPlan'),
@@ -2210,6 +2212,85 @@ function renderPayrollCloseCheck() {
     : emptyRow(8);
 }
 
+function latestPayrollSettlementSnapshot(month) {
+  return (state.payrollSettlements || [])
+    .filter((row) => row.month === month)
+    .slice()
+    .sort((a, b) => String(b.savedAt || b.generatedAt || '').localeCompare(String(a.savedAt || a.generatedAt || '')))[0] || null;
+}
+
+function payrollWorkflowRows(month) {
+  const closeRows = payrollCloseRows(month);
+  const rosterCount = getTeacherRosterBlocks().length;
+  const importStudentCount = (state.importSnapshot?.students || []).length;
+  const manualCount = closeRows.filter((row) => row.status === '需手動').length;
+  const missingCount = closeRows.filter((row) => row.status === '缺堂次').length;
+  const readyCount = closeRows.filter((row) => row.status === '可結算').length;
+  const eventCount = closeRows.reduce((sum, row) => sum + row.eventCount, 0);
+  const activeSettlement = payrollSettlement?.month === month ? payrollSettlement : null;
+  const savedSnapshot = latestPayrollSettlementSnapshot(month);
+  return [
+    {
+      status: rosterCount ? '完成' : '待處理',
+      step: '載入名單資料',
+      metric: rosterCount ? `${formatMoney(importStudentCount)} 位學生 / ${formatMoney(rosterCount)} 個老師名單區塊` : '尚未載入',
+      next: rosterCount ? '已可檢查堂次與月結。' : '先登入並載入雲端資料，或本機載入 Numbers 快照。'
+    },
+    {
+      status: !rosterCount ? '待處理' : (manualCount ? '需確認' : '完成'),
+      step: '處理需手動項目',
+      metric: rosterCount ? `${formatMoney(manualCount)} 項` : '尚未載入',
+      next: !rosterCount ? '先載入名單資料。' : (manualCount ? '先處理月結檢查最上方的需手動項目。' : '沒有 payroll-only 項目。')
+    },
+    {
+      status: !rosterCount ? '待處理' : (missingCount ? '待處理' : '完成'),
+      step: '補齊堂次日期',
+      metric: rosterCount ? `${formatMoney(readyCount)} 可結算 / ${formatMoney(missingCount)} 缺堂次` : '尚未載入',
+      next: !rosterCount ? '先載入名單資料。' : (missingCount ? '選缺堂次班級，填本月上課日期並儲存。' : '所有可自動計算的班級都有堂次日期。')
+    },
+    {
+      status: rosterCount ? '完成' : '待處理',
+      step: '確認本月進退班',
+      metric: rosterCount ? `${formatMoney(eventCount)} 筆本月異動` : '尚未載入',
+      next: !rosterCount ? '先載入名單資料。' : (eventCount ? '月結會套用這些進退班；請確認第幾堂或日期正確。' : '若本月有人加入或退出，先在本班本月進退班補上。')
+    },
+    {
+      status: activeSettlement ? '完成' : '待處理',
+      step: '產生月底結算',
+      metric: activeSettlement ? `$${formatMoney(activeSettlement.total)} / ${formatMoney(activeSettlement.teachers.length)} 位老師` : '尚未產生',
+      next: activeSettlement ? '檢查老師付款小計與班級明細。' : '堂次補完後按「產生月底結算」。'
+    },
+    {
+      status: savedSnapshot ? '完成' : '待處理',
+      step: '儲存月結快照',
+      metric: savedSnapshot ? `$${formatMoney(savedSnapshot.total)} / ${String(savedSnapshot.savedAt || savedSnapshot.generatedAt || '').slice(0, 10)}` : '尚未儲存',
+      next: savedSnapshot ? '已保留送審版本，可列印 / 存 PDF。' : '確認總額後按「儲存月結快照」。'
+    }
+  ];
+}
+
+function renderPayrollWorkflow() {
+  const month = elements.payrollSettlementMonth.value || elements.payrollCalcMonth.value || currentMonthIso();
+  const rows = payrollWorkflowRows(month);
+  const completeCount = rows.filter((row) => row.status === '完成').length;
+  const waitingCount = rows.length - completeCount;
+  const savedSnapshot = latestPayrollSettlementSnapshot(month);
+  elements.payrollWorkflowSummary.innerHTML = [
+    `<div class="summary-cell"><strong>${escapeHtml(month)}</strong><span>月份</span></div>`,
+    summaryCell('完成步驟', completeCount),
+    summaryCell('待處理步驟', waitingCount),
+    summaryCell('已存快照總額', savedSnapshot?.total || 0)
+  ].join('');
+  elements.payrollWorkflowRows.innerHTML = rows.map((row) => `
+    <tr>
+      <td><span class="status-tag ${row.status === '完成' ? 'status-ok' : 'status-warn'}">${escapeHtml(row.status)}</span></td>
+      <td>${escapeHtml(row.step)}</td>
+      <td>${escapeHtml(row.metric)}</td>
+      <td>${escapeHtml(row.next)}</td>
+    </tr>
+  `).join('');
+}
+
 function payrollSettlementSettings() {
   return {
     month: elements.payrollSettlementMonth.value || elements.payrollCalcMonth.value || currentMonthIso(),
@@ -3434,6 +3515,7 @@ function renderAll() {
   renderPayrollSettlement();
   renderPayrollSettlementArchive();
   renderPayrollCloseCheck();
+  renderPayrollWorkflow();
   renderAccounting();
   renderRecords();
   renderManualCourses();
@@ -3739,6 +3821,7 @@ elements.payrollForm.addEventListener('submit', async (event) => {
 elements.payrollSessionDates.addEventListener('input', () => {
   updatePayrollSessionSummary();
   renderPayrollCloseCheck();
+  renderPayrollWorkflow();
   if (!payrollPreview) return;
   payrollPreview = buildPayrollPreview();
   renderPayrollPreview();
@@ -3772,6 +3855,7 @@ elements.savePayrollSessionPlan.addEventListener('click', async () => {
     renderPayrollSettlement();
   }
   renderPayrollCloseCheck();
+  renderPayrollWorkflow();
   try {
     await saveCloudRecord('courseSessionPlans', record, key);
   } catch (error) {
@@ -3808,6 +3892,7 @@ elements.savePayrollEvent.addEventListener('click', async () => {
     renderPayrollSettlement();
   }
   renderPayrollCloseCheck();
+  renderPayrollWorkflow();
 });
 
 elements.previewPayrollRun.addEventListener('click', () => {
@@ -3842,6 +3927,7 @@ elements.previewPayrollRun.addEventListener('click', () => {
     }
     renderPayrollQuickEvents();
     renderPayrollCloseCheck();
+    renderPayrollWorkflow();
     if (!payrollPreview) return;
     payrollPreview = buildPayrollPreview();
     renderPayrollPreview();
@@ -3920,6 +4006,7 @@ elements.buildPayrollSettlement.addEventListener('click', () => {
   payrollSettlement = buildPayrollSettlementData();
   renderPayrollSettlement();
   renderPayrollCloseCheck();
+  renderPayrollWorkflow();
 });
 
 elements.printPayrollSettlement.addEventListener('click', () => {
@@ -3989,6 +4076,7 @@ elements.payrollSettlementArchiveRows.addEventListener('click', (event) => {
 ].forEach((element) => {
   element.addEventListener('change', () => {
     renderPayrollCloseCheck();
+    renderPayrollWorkflow();
     if (!payrollSettlement) return;
     payrollSettlement = buildPayrollSettlementData();
     renderPayrollSettlement();

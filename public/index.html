@@ -258,6 +258,28 @@
               <button class="ghost" id="savePayrollSettlement" type="button" disabled>儲存月結快照</button>
             </div>
           </div>
+          <section class="section-block">
+            <div class="section-heading">
+              <div>
+                <h2>月結作業清單</h2>
+                <p class="muted">照這張表從上往下處理；全部完成後再把薪資單交給老闆付款。</p>
+              </div>
+            </div>
+            <section class="import-summary" id="payrollWorkflowSummary"></section>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>狀態</th>
+                    <th>步驟</th>
+                    <th>目前數字</th>
+                    <th>下一步</th>
+                  </tr>
+                </thead>
+                <tbody id="payrollWorkflowRows"></tbody>
+              </table>
+            </div>
+          </section>
           <section class="import-summary" id="payrollSettlementSummary"></section>
           <div class="split-view settlement-split">
             <div class="table-wrap">
