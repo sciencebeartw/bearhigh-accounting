@@ -2150,6 +2150,7 @@ function payrollCloseRows(month) {
     return {
       status,
       source: block.source === 'manualCourse' ? '網頁' : '匯入',
+      rosterKey: block.key,
       teacherName: payrollSettlementTeacherName(block),
       courseName: block.title || '',
       rowCount,
@@ -2166,6 +2167,7 @@ function payrollCloseRows(month) {
     .map((sheet) => ({
       status: '需手動',
       source: '匯入薪資歷史',
+      rosterKey: '',
       teacherName: sheet.summary?.sheet || sheet.sheet || '未命名分頁',
       courseName: '有薪資歷史，但沒有匯入老師名單',
       rowCount: 0,
@@ -2207,9 +2209,10 @@ function renderPayrollCloseCheck() {
         <td class="money">${formatMoney(row.sessionCount)}</td>
         <td class="money">${formatMoney(row.eventCount)}</td>
         <td>${escapeHtml(row.note)}</td>
+        <td>${row.rosterKey ? `<button class="ghost small" type="button" data-open-payroll-block="${escapeHtml(row.rosterKey)}">${row.status === '缺堂次' ? '處理堂次' : '查看'}</button>` : ''}</td>
       </tr>
     `).join('')
-    : emptyRow(8);
+    : emptyRow(9);
 }
 
 function latestPayrollSettlementSnapshot(month) {
@@ -3816,6 +3819,33 @@ elements.payrollForm.addEventListener('submit', async (event) => {
   } catch (error) {
     setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
   }
+});
+
+function openPayrollRosterBlock(rosterKey) {
+  if (!rosterKey) return;
+  const month = elements.payrollSettlementMonth.value || elements.payrollCalcMonth.value || currentMonthIso();
+  elements.payrollCalcMonth.value = month;
+  elements.payrollRosterBlock.value = rosterKey;
+  const block = selectedPayrollRosterBlock();
+  if (block && !elements.payrollCalcTeacher.value.trim()) {
+    elements.payrollCalcTeacher.value = block.teacherSheet || '';
+  }
+  if (block?.source === 'manualCourse') {
+    elements.payrollCalcShare.value = block.defaultShare || '50';
+    elements.payrollCalcFixedRate.value = block.defaultFixedRate || '';
+  }
+  syncPayrollSessionPlanEditor();
+  updatePayrollSessionSummary();
+  renderPayrollQuickEvents();
+  renderPayrollCloseCheck();
+  renderPayrollWorkflow();
+  document.querySelector('.payroll-builder')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+elements.payrollCloseRows.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-open-payroll-block]');
+  if (!button) return;
+  openPayrollRosterBlock(button.dataset.openPayrollBlock);
 });
 
 elements.payrollSessionDates.addEventListener('input', () => {
