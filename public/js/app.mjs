@@ -2483,6 +2483,7 @@ function buildPayrollSettlementData() {
   for (const row of classes.filter((item) => item.sessionCount > 0)) {
     const key = `${row.teacherName}::${row.methodLabel}`;
     const current = teacherMap.get(key) || {
+      key,
       teacherName: row.teacherName,
       methodLabel: row.methodLabel,
       classCount: 0,
@@ -2516,7 +2517,7 @@ function buildPayrollSettlementData() {
 function renderPayrollSettlement() {
   if (!payrollSettlement) {
     elements.payrollSettlementSummary.innerHTML = '<div class="record-item"><p>尚未產生月底結算。先儲存各班堂次日期，再按「產生月底結算」。</p></div>';
-    elements.payrollSettlementTeacherRows.innerHTML = emptyRow(6);
+    elements.payrollSettlementTeacherRows.innerHTML = emptyRow(7);
     elements.payrollSettlementClassRows.innerHTML = emptyRow(7);
     elements.printPayrollSettlement.disabled = true;
     elements.savePayrollSettlement.disabled = true;
@@ -2540,9 +2541,10 @@ function renderPayrollSettlement() {
         <td class="money">${formatMoney(teacher.sessionCount)}</td>
         <td class="money">${formatMoney(teacher.personSessions)}</td>
         <td class="money">${formatMoney(teacher.total)}</td>
+        <td><button class="ghost small" type="button" data-print-payroll-teacher="${escapeHtml(teacher.key || `${teacher.teacherName}::${teacher.methodLabel}`)}">列印這位</button></td>
       </tr>
     `).join('')
-    : emptyRow(6);
+    : emptyRow(7);
 
   elements.payrollSettlementClassRows.innerHTML = payrollSettlement.classes.length
     ? payrollSettlement.classes.map((row) => `
@@ -2654,6 +2656,107 @@ function buildPayrollSettlementPrintHtml(settlement) {
   ${missingRows ? `<p class="warn">未列入付款，因為尚未設定堂次日期：${escapeHtml(missingRows)}</p>` : ''}
 </body>
 </html>`;
+}
+
+function settlementTeacherKey(teacher) {
+  return teacher?.key || `${teacher?.teacherName || ''}::${teacher?.methodLabel || ''}`;
+}
+
+function settlementClassesForTeacher(settlement, teacher) {
+  return (settlement?.classes || []).filter((row) => (
+    row.sessionCount > 0 &&
+    row.teacherName === teacher.teacherName &&
+    row.methodLabel === teacher.methodLabel
+  ));
+}
+
+function buildPayrollSettlementTeacherPrintHtml(settlement, teacherKey) {
+  const teacher = (settlement?.teachers || []).find((row) => settlementTeacherKey(row) === teacherKey);
+  if (!teacher) return '';
+  const generatedAt = new Date(settlement.generatedAt).toLocaleString('zh-TW', { hour12: false });
+  const classRows = settlementClassesForTeacher(settlement, teacher)
+    .map((row) => {
+      const detailText = (row.sessionDetails || [])
+        .map((detail) => `第${formatMoney(detail.sessionNo)}堂 ${detail.date} ${formatMoney(detail.headcount)}人 $${formatMoney(detail.amount)}`)
+        .join(' / ');
+      return `
+        <tr>
+          <td>${escapeHtml(row.courseName)}</td>
+          <td class="money">${formatMoney(row.sessionCount)}</td>
+          <td>${escapeHtml(row.headcountText)}</td>
+          <td>${escapeHtml(detailText)}</td>
+          <td class="money">${formatMoney(row.total)}</td>
+        </tr>
+      `;
+    }).join('');
+  return `<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(settlement.month)} ${escapeHtml(teacher.teacherName)} 薪資表</title>
+  <style>
+    @page { size: A4 portrait; margin: 12mm; }
+    * { box-sizing: border-box; }
+    body { color: #102a3a; font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", Arial, sans-serif; margin: 0; }
+    h1 { font-size: 22px; margin: 0 0 14px; text-align: center; }
+    .toolbar { margin: 0 0 12px; text-align: right; }
+    .toolbar button { background: #237fa6; border: 0; border-radius: 8px; color: white; cursor: pointer; font: inherit; font-weight: 700; padding: 8px 14px; }
+    .meta { border: 1px solid #9fb9c7; border-radius: 8px; display: grid; grid-template-columns: repeat(2, 1fr); margin-bottom: 12px; overflow: hidden; }
+    .meta div { border-bottom: 1px solid #d6e3ea; padding: 8px 10px; }
+    .meta div:nth-last-child(-n + 2) { border-bottom: 0; }
+    .label { color: #5c6f7b; display: block; font-size: 12px; font-weight: 700; margin-bottom: 2px; }
+    table { border-collapse: collapse; font-size: 12px; width: 100%; }
+    th, td { border: 1px solid #9fb9c7; padding: 6px 7px; vertical-align: top; }
+    th { background: #e3f3f9; color: #14232e; }
+    .money { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+    .total { font-size: 20px; font-weight: 800; margin: 14px 0; text-align: right; }
+    .sign { display: grid; gap: 12px; grid-template-columns: repeat(3, 1fr); margin-top: 22px; }
+    .sign div { border-bottom: 1px solid #14232e; height: 46px; padding-top: 28px; }
+    @media print { .toolbar { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="toolbar"><button onclick="window.print()">列印 / 存 PDF</button></div>
+  <h1>山熊升大老師薪資表</h1>
+  <section class="meta">
+    <div><span class="label">月份</span>${escapeHtml(settlement.month)}</div>
+    <div><span class="label">老師</span>${escapeHtml(teacher.teacherName)}</div>
+    <div><span class="label">計算方式</span>${escapeHtml(teacher.methodLabel)}</div>
+    <div><span class="label">製表時間</span>${escapeHtml(generatedAt)}</div>
+    <div><span class="label">課程數</span>${formatMoney(teacher.classCount)}</div>
+    <div><span class="label">堂數 / 人次</span>${formatMoney(teacher.sessionCount)} 堂 / ${formatMoney(teacher.personSessions)} 人次</div>
+  </section>
+  <p class="total">應付小計：$${formatMoney(teacher.total)}</p>
+  <table>
+    <thead>
+      <tr><th>班級 / 課程</th><th>堂數</th><th>人數變化</th><th>堂次明細</th><th>小計</th></tr>
+    </thead>
+    <tbody>${classRows || `<tr><td colspan="5">尚無已設定堂次的課程</td></tr>`}</tbody>
+  </table>
+  <section class="sign">
+    <div>製表</div>
+    <div>覆核</div>
+    <div>付款確認</div>
+  </section>
+</body>
+</html>`;
+}
+
+function openPayrollSettlementTeacherPrint(settlement, teacherKey) {
+  const html = buildPayrollSettlementTeacherPrintHtml(settlement, teacherKey);
+  if (!html) return;
+  const teacher = (settlement.teachers || []).find((row) => settlementTeacherKey(row) === teacherKey);
+  const popup = window.open('', '_blank');
+  if (!popup) {
+    downloadFile(`bearhigh-payroll-${filenameSafe(settlement.month)}-${filenameSafe(teacher?.teacherName || 'teacher')}.html`, html, 'text/html;charset=utf-8');
+    setCloudStatus('瀏覽器封鎖列印視窗，已改下載單一老師 HTML，可開啟後列印成 PDF');
+    return;
+  }
+  popup.document.open();
+  popup.document.write(html);
+  popup.document.close();
+  popup.focus();
+  window.setTimeout(() => popup.print(), 350);
 }
 
 function buildPayrollXls(preview) {
@@ -4053,6 +4156,12 @@ elements.printPayrollSettlement.addEventListener('click', () => {
   popup.document.close();
   popup.focus();
   window.setTimeout(() => popup.print(), 350);
+});
+
+elements.payrollSettlementTeacherRows.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-print-payroll-teacher]');
+  if (!button || !payrollSettlement) return;
+  openPayrollSettlementTeacherPrint(payrollSettlement, button.dataset.printPayrollTeacher);
 });
 
 elements.savePayrollSettlement.addEventListener('click', async () => {
