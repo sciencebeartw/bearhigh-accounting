@@ -126,6 +126,7 @@ const elements = {
   exportPayrollPreviewPrint: document.querySelector('#exportPayrollPreviewPrint'),
   exportPayrollPreviewXls: document.querySelector('#exportPayrollPreviewXls'),
   buildPayrollSettlement: document.querySelector('#buildPayrollSettlement'),
+  buildPayrollSettlementFromImport: document.querySelector('#buildPayrollSettlementFromImport'),
   printPayrollSettlement: document.querySelector('#printPayrollSettlement'),
   savePayrollSettlement: document.querySelector('#savePayrollSettlement'),
   pricingVersion: document.querySelector('#pricingVersion'),
@@ -299,6 +300,7 @@ function escapeHtml(value) {
 }
 
 function renderOptions() {
+  if (!elements.pricingVersion || !elements.packageId || !elements.courseOptions) return;
   elements.pricingVersion.innerHTML = Object.entries(PRICING_RULES.versions)
     .map(([value, rule]) => `<option value="${escapeHtml(value)}">${escapeHtml(rule.label)}</option>`)
     .join('');
@@ -323,6 +325,7 @@ function getFormData(form) {
 }
 
 function renderAllocationPreview() {
+  if (!elements.tuitionForm) return;
   const data = getFormData(elements.tuitionForm);
   const result = calculateTuitionAllocation(data);
 
@@ -507,7 +510,7 @@ function canonicalSubject(value) {
   return textValue.replace(/學收|課程|班/g, '').trim();
 }
 
-function excelSerialDateToIso(value) {
+function importedPayrollDateToIso(value) {
   const serial = Number(value);
   if (!Number.isFinite(serial) || serial < 20000 || serial > 80000) return '';
   const utc = Date.UTC(1899, 11, 30) + Math.round(serial) * 86400000;
@@ -1015,7 +1018,7 @@ function syncStudentSelectOptions() {
     return `<option value="${escapeHtml(student.id)}">${escapeHtml(label)}</option>`;
   }));
   const html = options.join('');
-  if (elements.tuitionStudentId.innerHTML !== html) elements.tuitionStudentId.innerHTML = html;
+  if (elements.tuitionStudentId && elements.tuitionStudentId.innerHTML !== html) elements.tuitionStudentId.innerHTML = html;
   if (elements.eventStudentId.innerHTML !== html) elements.eventStudentId.innerHTML = html;
 }
 
@@ -1255,7 +1258,7 @@ function renderStudentDetail(student, tuitionEntries, duplicateCount) {
         <p class="eyebrow">${escapeHtml(student.sheet)} · 列 ${escapeHtml(student.row)}</p>
         <h2>${escapeHtml(studentName(student) || '未命名學生')}</h2>
       </div>
-      <button class="ghost" type="button" data-fill-student="${escapeHtml(student.id)}">帶入表單</button>
+      <button class="ghost" type="button" data-fill-student="${escapeHtml(student.id)}">帶入異動表單</button>
     </div>
     <div class="detail-meta">
       <span>${escapeHtml(studentSchool(student) || '未填學校')}</span>
@@ -1371,19 +1374,6 @@ function renderStudentDetail(student, tuitionEntries, duplicateCount) {
             </div>
           `;
         }).join('') : '<p class="empty">尚無網頁新增報名</p>'}
-      </div>
-    </section>
-
-    <section class="detail-section">
-      <h3>本機手動學費紀錄</h3>
-      <div class="mini-list">
-        ${manual.tuitionPayments.length ? manual.tuitionPayments.map((paymentRecord) => `
-          <div class="mini-row">
-            <strong>${escapeHtml(paymentRecord.createdAt?.slice(0, 10) || '')}</strong>
-            <span>${escapeHtml((paymentRecord.courseNames || []).join('、'))}</span>
-            <span>$${formatMoney(paymentRecord.allocation?.totals?.paid || 0)}</span>
-          </div>
-        `).join('') : '<p class="empty">尚無手動學費紀錄</p>'}
       </div>
     </section>
 
@@ -2200,7 +2190,7 @@ function renderPayrollCloseCheck() {
   ].join('');
   elements.payrollCloseRows.innerHTML = rows.length
     ? rows.map((row) => `
-      <tr>
+      <tr ${row.rosterKey ? `data-open-payroll-block="${escapeHtml(row.rosterKey)}"` : ''}>
         <td><span class="status-tag ${row.status === '可結算' ? 'status-ok' : 'status-warn'}">${escapeHtml(row.status)}</span></td>
         <td>${escapeHtml(row.source)}</td>
         <td>${escapeHtml(row.teacherName)}</td>
@@ -2510,6 +2500,132 @@ function buildPayrollSettlementData() {
     classes,
     calculatedClassCount: classes.filter((row) => row.sessionCount > 0).length,
     missingClassCount: classes.filter((row) => row.sessionCount === 0).length,
+    total
+  };
+}
+
+function monthToImportedPayrollTitle(month) {
+  const match = String(month || '').match(/^(\d{4})-(\d{1,2})$/);
+  if (!match) return '';
+  return `${match[1]}年${Number(match[2])}月 堂數`;
+}
+
+function excelSerialDateToIso(value) {
+  const serial = Number(String(value ?? '').trim());
+  if (!Number.isFinite(serial) || serial <= 0) return String(value || '');
+  const date = new Date(Math.round((serial - 25569) * 86400 * 1000));
+  if (Number.isNaN(date.getTime())) return String(value || '');
+  return date.toISOString().slice(0, 10);
+}
+
+function importedPayrollCourseBase(courseName) {
+  return String(courseName || '').replace(/\d+\s*$/, '').trim() || String(courseName || '').trim();
+}
+
+function importedPayrollHeadcount(row, headers) {
+  const total = parseNumber(row.J);
+  const shareAmount = parseNumber(row.I);
+  if (headers.I?.includes('人數津貼')) {
+    return Math.max(0, Math.round(15 + (shareAmount / 300)));
+  }
+  if (shareAmount > 0) return Math.max(0, Math.round(total / shareAmount));
+  return 0;
+}
+
+function importedPayrollRowsForMonth(month) {
+  const title = monthToImportedPayrollTitle(month);
+  if (!title) return [];
+  return (state.importSnapshot?.teacherSheets || [])
+    .flatMap((sheet) => (sheet.payrollBlocks || []).map((block) => ({
+      teacherSheet: sheet.summary?.sheet || block.sheet || '',
+      block
+    })))
+    .filter(({ block }) => String(block.title || '').includes(title));
+}
+
+function buildPayrollSettlementFromImportedPayroll() {
+  const month = elements.payrollSettlementMonth.value || elements.payrollCalcMonth.value || currentMonthIso();
+  const importedBlocks = importedPayrollRowsForMonth(month);
+  const classes = [];
+  const teachers = [];
+
+  for (const { teacherSheet, block } of importedBlocks) {
+    const parsedRows = (block.rows || []).map((row) => (
+      Object.fromEntries((row.cells || []).map((cell) => [cell.column, cell.value]))
+    ));
+    const headers = parsedRows[0] || {};
+    const totalRow = parsedRows.find((row) => row.B === '總計');
+    const teacherName = totalRow?.A || payrollSettlementTeacherName({ teacherSheet });
+    const teacher = {
+      key: `${teacherName}::Numbers 匯入薪資表`,
+      teacherName,
+      methodLabel: 'Numbers 匯入薪資表',
+      classCount: 0,
+      sessionCount: 0,
+      personSessions: 0,
+      total: 0
+    };
+    const classMap = new Map();
+
+    for (const row of parsedRows.slice(1)) {
+      const courseName = String(row.B || '').trim();
+      const amount = Math.round(parseNumber(row.J));
+      if (!courseName || courseName === '總計' || !amount) continue;
+      const courseBase = importedPayrollCourseBase(courseName);
+      const current = classMap.get(courseBase) || {
+        rosterKey: '',
+        teacherName,
+        courseName: courseBase,
+        methodKind: 'importedNumbers',
+        methodLabel: 'Numbers 匯入薪資表',
+        sessionCount: 0,
+        personSessions: 0,
+        total: 0,
+        headcountText: '',
+        status: '由 Numbers 薪資表匯入',
+        sessionDetails: [],
+        skippedEventCount: 0
+      };
+      const headcount = importedPayrollHeadcount(row, headers);
+      current.sessionDetails.push({
+        sessionNo: current.sessionDetails.length + 1,
+        date: importedPayrollDateToIso(row.A),
+        headcount,
+        amount
+      });
+      current.sessionCount += 1;
+      current.personSessions += headcount;
+      current.total += amount;
+      classMap.set(courseBase, current);
+    }
+
+    const teacherClasses = Array.from(classMap.values()).map((row) => ({
+      ...row,
+      headcountText: compactHeadcountText(row.sessionDetails)
+    }));
+    for (const row of teacherClasses) {
+      teacher.classCount += 1;
+      teacher.sessionCount += row.sessionCount;
+      teacher.personSessions += row.personSessions;
+      teacher.total += row.total;
+    }
+    if (totalRow?.J) teacher.total = Math.round(parseNumber(totalRow.J));
+    if (teacher.sessionCount > 0) {
+      teachers.push(teacher);
+      classes.push(...teacherClasses);
+    }
+  }
+
+  const total = teachers.reduce((sum, teacher) => sum + teacher.total, 0);
+  return {
+    id: nowId('payroll_settlement_imported'),
+    generatedAt: new Date().toISOString(),
+    month,
+    settings: { source: 'importedNumbersPayroll' },
+    teachers: teachers.sort((a, b) => b.total - a.total || a.teacherName.localeCompare(b.teacherName, 'zh-Hant')),
+    classes: classes.sort((a, b) => a.teacherName.localeCompare(b.teacherName, 'zh-Hant') || a.courseName.localeCompare(b.courseName, 'zh-Hant')),
+    calculatedClassCount: classes.length,
+    missingClassCount: 0,
     total
   };
 }
@@ -3466,15 +3582,6 @@ function renderAccounting() {
 }
 
 function renderRecords() {
-  elements.tuitionRecords.innerHTML = state.tuitionPayments.length
-    ? state.tuitionPayments.slice().reverse().map((payment) => `
-      <article class="record-item">
-        <strong>${escapeHtml(payment.studentName)} · ${escapeHtml(payment.cohort)} · $${formatMoney(payment.allocation.totals.paid)}</strong>
-        <p>${escapeHtml(payment.school || '未填學校')}｜${escapeHtml(payment.courseNames.join('、'))}｜${escapeHtml(payment.note || '無備註')}</p>
-      </article>
-    `).join('')
-    : '<div class="record-item"><p>尚無學費紀錄</p></div>';
-
   elements.payrollRecords.innerHTML = state.payrollRuns.length
     ? state.payrollRuns.slice().reverse().map((row) => `
       <article class="record-item">
@@ -3668,8 +3775,8 @@ elements.tabs.forEach((tab) => {
   tab.addEventListener('click', () => setActiveTab(tab.dataset.tab));
 });
 
-elements.tuitionForm.addEventListener('input', renderAllocationPreview);
-elements.tuitionForm.addEventListener('change', renderAllocationPreview);
+elements.tuitionForm?.addEventListener('input', renderAllocationPreview);
+elements.tuitionForm?.addEventListener('change', renderAllocationPreview);
 
 function fillStudentIntoForms(studentId) {
   const student = buildStudentIndexes().studentsById.get(studentId);
@@ -3678,19 +3785,21 @@ function fillStudentIntoForms(studentId) {
   const school = studentSchool(student);
   const cohort = inferCohort(student);
   const courseIds = new Set(inferCourseIds(student));
-  elements.tuitionStudentId.value = student.id;
+  if (elements.tuitionStudentId) elements.tuitionStudentId.value = student.id;
   elements.eventStudentId.value = student.id;
-  elements.tuitionForm.elements.studentName.value = name;
   elements.eventForm.elements.studentName.value = name;
-  elements.tuitionForm.elements.school.value = school;
-  if (cohort) elements.tuitionForm.elements.cohort.value = cohort;
-  elements.tuitionForm.querySelectorAll('input[name="courses"]').forEach((input) => {
-    input.checked = courseIds.has(input.value);
-  });
+  if (elements.tuitionForm) {
+    elements.tuitionForm.elements.studentName.value = name;
+    elements.tuitionForm.elements.school.value = school;
+    if (cohort) elements.tuitionForm.elements.cohort.value = cohort;
+    elements.tuitionForm.querySelectorAll('input[name="courses"]').forEach((input) => {
+      input.checked = courseIds.has(input.value);
+    });
+  }
   renderAllocationPreview();
 }
 
-elements.tuitionStudentId.addEventListener('change', () => {
+elements.tuitionStudentId?.addEventListener('change', () => {
   if (elements.tuitionStudentId.value) fillStudentIntoForms(elements.tuitionStudentId.value);
 });
 
@@ -3698,7 +3807,7 @@ elements.eventStudentId.addEventListener('change', () => {
   if (elements.eventStudentId.value) fillStudentIntoForms(elements.eventStudentId.value);
 });
 
-elements.tuitionForm.addEventListener('submit', async (event) => {
+elements.tuitionForm?.addEventListener('submit', async (event) => {
   event.preventDefault();
   const data = getFormData(elements.tuitionForm);
   const allocation = calculateTuitionAllocation(data);
@@ -3726,7 +3835,7 @@ elements.tuitionForm.addEventListener('submit', async (event) => {
   }
 });
 
-document.querySelector('#clearTuitionForm').addEventListener('click', () => {
+document.querySelector('#clearTuitionForm')?.addEventListener('click', () => {
   elements.tuitionForm.reset();
   elements.pricingVersion.value = 'current_21600_24';
   renderAllocationPreview();
@@ -3946,9 +4055,9 @@ function openPayrollRosterBlock(rosterKey) {
 }
 
 elements.payrollCloseRows.addEventListener('click', (event) => {
-  const button = event.target.closest('[data-open-payroll-block]');
-  if (!button) return;
-  openPayrollRosterBlock(button.dataset.openPayrollBlock);
+  const target = event.target.closest('[data-open-payroll-block]');
+  if (!target) return;
+  openPayrollRosterBlock(target.dataset.openPayrollBlock);
 });
 
 elements.payrollSessionDates.addEventListener('input', () => {
@@ -4137,6 +4246,18 @@ elements.exportPayrollPreviewXls.addEventListener('click', () => {
 
 elements.buildPayrollSettlement.addEventListener('click', () => {
   payrollSettlement = buildPayrollSettlementData();
+  renderPayrollSettlement();
+  renderPayrollCloseCheck();
+  renderPayrollWorkflow();
+});
+
+elements.buildPayrollSettlementFromImport.addEventListener('click', () => {
+  payrollSettlement = buildPayrollSettlementFromImportedPayroll();
+  if (payrollSettlement.teachers.length) {
+    setCloudStatus(`已從 Numbers 薪資表建立 ${payrollSettlement.month} 月結`);
+  } else {
+    setCloudStatus('匯入快照中找不到這個月份的 Numbers 薪資表');
+  }
   renderPayrollSettlement();
   renderPayrollCloseCheck();
   renderPayrollWorkflow();
@@ -4553,7 +4674,7 @@ document.querySelector('#exportJson').addEventListener('click', () => {
   downloadFile('bearhigh-accounting-local-draft.json', JSON.stringify(state, null, 2), 'application/json;charset=utf-8');
 });
 
-document.querySelector('#exportTuitionCsv').addEventListener('click', () => {
+document.querySelector('#exportTuitionCsv')?.addEventListener('click', () => {
   const rows = [
     ['建立時間', '學生', 'cohort', '學校', '課程', '實收', '科目', '原價', '內建合報優惠', '規則金額', '額外合報優惠', '抵用券', '手動折扣', '實際收入', '備註']
   ];
@@ -4660,7 +4781,7 @@ elements.studentDetail.addEventListener('click', (event) => {
   const fillButton = event.target.closest('[data-fill-student]');
   if (fillButton) {
     fillStudentIntoForms(fillButton.dataset.fillStudent);
-    setActiveTab('tuition');
+    setActiveTab('events');
     renderAllocationPreview();
     return;
   }

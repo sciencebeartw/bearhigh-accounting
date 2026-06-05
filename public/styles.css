@@ -69,10 +69,10 @@ button:disabled {
 }
 
 .app-logo {
-  border-radius: 12px;
   display: block;
-  height: 52px;
-  width: 52px;
+  height: 72px;
+  object-fit: contain;
+  width: 72px;
 }
 
 .login-gate {
@@ -95,11 +95,11 @@ button:disabled {
 }
 
 .login-logo {
-  border-radius: 22px;
   display: block;
-  height: 96px;
+  height: 116px;
   margin: 0 auto 14px;
-  width: 96px;
+  object-fit: contain;
+  width: 116px;
 }
 
 .login-copy {
@@ -517,6 +517,10 @@ td.money {
   font-variant-numeric: tabular-nums;
   text-align: right;
   white-space: nowrap;
+}
+
+tr[data-open-payroll-block] {
+  cursor: pointer;
 }
 
 .empty {
@@ -988,8 +992,8 @@ tr.is-selected td {
   }
 
   .app-logo {
-    height: 46px;
-    width: 46px;
+    height: 58px;
+    width: 58px;
   }
 
   .matrix-filter-bar {

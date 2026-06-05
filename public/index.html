@@ -15,7 +15,7 @@
   <body>
     <section class="login-gate" id="loginGate">
       <div class="login-card">
-        <img class="login-logo" src="./accounting-icon-192.png" alt="山熊升大高中帳務">
+        <img class="login-logo" src="./bearhigh-logo.png" alt="山熊升大">
         <p class="eyebrow">BearHigh</p>
         <h1>高中帳務工作台</h1>
         <p class="login-copy">登入後會自動載入雲端學生、老師名單與帳務草稿。</p>
@@ -27,7 +27,7 @@
     <div id="appShell" hidden>
     <header class="topbar">
       <div class="brand-lockup">
-        <img class="app-logo" src="./accounting-icon-192.png" alt="山熊升大">
+        <img class="app-logo" src="./bearhigh-logo.png" alt="山熊升大">
         <div>
           <p class="eyebrow">BearHigh</p>
           <h1>高中帳務工作台</h1>
@@ -43,106 +43,13 @@
 
     <main class="workspace">
       <nav class="tabs" aria-label="功能切換">
-        <button class="tab is-active" data-tab="tuition" type="button">學費</button>
-        <button class="tab" data-tab="events" type="button">異動</button>
-        <button class="tab" data-tab="payroll" type="button">薪資</button>
-        <button class="tab" data-tab="students" type="button">學生</button>
+        <button class="tab is-active" data-tab="students" type="button">學生</button>
         <button class="tab" data-tab="accounting" type="button">收款</button>
+        <button class="tab" data-tab="payroll" type="button">薪資</button>
+        <button class="tab" data-tab="events" type="button">異動</button>
         <button class="tab" data-tab="import" type="button">匯入</button>
         <button class="tab" data-tab="records" type="button">紀錄</button>
       </nav>
-
-      <section class="panel is-active" data-panel="tuition">
-        <form class="form-grid" id="tuitionForm">
-          <label>
-            <span>學生</span>
-            <input name="studentName" autocomplete="off" required>
-          </label>
-          <label>
-            <span>學生識別</span>
-            <select name="studentId" id="tuitionStudentId">
-              <option value="">未綁定匯入資料</option>
-            </select>
-          </label>
-          <label>
-            <span>年級 / cohort</span>
-            <select name="cohort">
-              <option value="國三升高一">國三升高一</option>
-              <option value="高一升高二">高一升高二</option>
-              <option value="高二升高三">高二升高三</option>
-              <option value="高三既有資料">高三既有資料</option>
-            </select>
-          </label>
-          <label>
-            <span>學校</span>
-            <input name="school" autocomplete="off">
-          </label>
-          <label>
-            <span>定價版本</span>
-            <select name="pricingVersion" id="pricingVersion"></select>
-          </label>
-          <label>
-            <span>套餐</span>
-            <select name="packageId" id="packageId"></select>
-          </label>
-          <label>
-            <span>實收金額</span>
-            <input name="paidAmount" inputmode="numeric" placeholder="例：61800">
-          </label>
-          <label>
-            <span>額外合報優惠</span>
-            <input name="packageDiscount" inputmode="numeric" placeholder="例：1000">
-          </label>
-          <label>
-            <span>學費抵用券</span>
-            <input name="voucher" inputmode="numeric" placeholder="例：3000">
-          </label>
-          <label>
-            <span>手動折扣</span>
-            <input name="manualDiscount" inputmode="numeric">
-          </label>
-          <label class="wide">
-            <span>備註</span>
-            <input name="note" autocomplete="off">
-          </label>
-
-          <fieldset class="course-picker wide">
-            <legend>課程</legend>
-            <div id="courseOptions" class="course-options"></div>
-          </fieldset>
-
-          <div class="actions wide">
-            <button class="primary" id="saveTuition" type="submit">記入學費</button>
-            <button class="ghost" id="clearTuitionForm" type="button">清空</button>
-          </div>
-        </form>
-
-        <section class="result-band" aria-live="polite">
-          <div>
-            <p class="eyebrow">分攤結果</p>
-            <h2 id="allocationTotal">$0</h2>
-          </div>
-          <div id="allocationWarnings" class="warnings"></div>
-        </section>
-
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>科目</th>
-                <th>原價</th>
-                <th>內建合報</th>
-                <th>規則金額</th>
-                <th>額外優惠</th>
-                <th>抵用券</th>
-                <th>手動折扣</th>
-                <th>實際收入</th>
-              </tr>
-            </thead>
-            <tbody id="allocationRows"></tbody>
-          </table>
-        </div>
-      </section>
 
       <section class="panel" data-panel="events">
         <form class="form-grid" id="eventForm">
@@ -254,6 +161,7 @@
             </label>
             <div class="actions wide">
               <button class="primary" id="buildPayrollSettlement" type="button">產生月底結算</button>
+              <button class="ghost" id="buildPayrollSettlementFromImport" type="button">從 Numbers 薪資表建立月結</button>
               <button class="ghost" id="printPayrollSettlement" type="button" disabled>列印 / 存 PDF</button>
               <button class="ghost" id="savePayrollSettlement" type="button" disabled>儲存月結快照</button>
             </div>
@@ -538,7 +446,7 @@
         </div>
       </section>
 
-      <section class="panel" data-panel="students">
+      <section class="panel is-active" data-panel="students">
         <div class="record-toolbar">
           <button class="ghost" id="exportStudentFilterCsv" type="button">匯出目前學生名單 CSV</button>
           <button class="ghost" id="exportClassRosterCsv" type="button">匯出目前班級名單 CSV</button>
@@ -1311,14 +1219,9 @@
       <section class="panel" data-panel="records">
         <div class="record-toolbar">
           <button class="ghost" id="exportJson" type="button">匯出 JSON</button>
-          <button class="ghost" id="exportTuitionCsv" type="button">匯出學費 CSV</button>
           <button class="danger" id="clearAll" type="button">清除本機草稿</button>
         </div>
         <div class="record-grid">
-          <section>
-            <h2>學費紀錄</h2>
-            <div id="tuitionRecords" class="record-list"></div>
-          </section>
           <section>
             <h2>薪資草表</h2>
             <div id="payrollRecords" class="record-list"></div>
