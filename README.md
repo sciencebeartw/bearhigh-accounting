@@ -35,6 +35,8 @@ Firebase 專案也獨立使用 `bearhigh`，避免開發期與 `sciencebear-admi
 - 月結快照：月底結算產生後可儲存成固定快照，之後即使修改堂次、名單或公式設定，也不會覆蓋已存版本；已存月結可重新列印 / 存 PDF。
 - 堂次日期表：薪資試算可為每個老師名單區塊與月份儲存一組本月上課日期；進退班異動若未填第幾堂，會用異動日期自動推算從哪一堂開始加入或退出。堂次日期必須依序遞增且數量需等於本月堂數，避免錯算。
 - 學生資料中心：可依學生、分頁/cohort、班級/課程、繳費狀態與同名風險查詢。
+- 主檔化工作區：新增「課程」與「老師」頁籤；課程頁可依學期、老師、關鍵字查課程，點課程可看學生名單、應收/已收、堂次日期與進退班異動；老師頁可依學期查老師開課、學生人次、收費合計與預設薪資規則。
+- 主檔匯入：匯入頁提供「Dry-run 主檔轉換」與「寫入主檔」，可把目前 Numbers / Firebase 匯入快照轉成學生、學期、老師、課程、選課與應收主檔；轉換使用穩定 id 去重，可重跑。寫入時使用 RTDB scoped multi-location update 到 `accounting/manual/*`，不覆蓋整個 `accounting` 節點。
 - CRM 檔案：學生明細可看基本資料、課程、Numbers 學費欄位、網頁報名/收費、進退班異動、追蹤備註與時間軸。
 - 班級名單：選定班級/課程後可查看該班名單與指定月份的加入/退出異動，並匯出 CSV。
 - 匯入 / 網頁資料比對：學生頁會把 Numbers 匯入資料與網頁新增學生、科目、報名互相比對，標示「疑似重複報名」、「同名需確認」、「匯入生加網頁課」與「網頁新增」，方便短期雙軌測試時核對。
@@ -55,6 +57,7 @@ Firebase 專案也獨立使用 `bearhigh`，避免開發期與 `sciencebear-admi
 - 線上儲存的月結快照會同步到 `accounting/manual/payrollSettlements`，用於保留已送審或已付款的薪資總表版本。
 - 線上新增的學期/梯次、老師、學生、課程與報名收費會同步到 `accounting/manual/manualTerms`、`manualTeachers`、`manualStudents`、`manualCourses`、`manualCourseEnrollments`。
 - 線上新增的收款狀態、收款/退費流水與稽核紀錄會同步到 `accounting/manual/receivables`、`paymentLedger`、`auditLogs`。
+- 匯入快照轉主檔時會寫入同一組 `accounting/manual/*` 主檔集合；舊 `manual*` 命名仍保留作相容層，畫面上以學生/課程/老師主檔操作。
 - 登入後會讀回雲端 `accounting/manual/*`，避免換裝置後看不到先前手動紀錄。
 - `public/js/firebase-config.mjs` 不納入 Git；GitHub Pages 由 Actions 變數 `BEARHIGH_FIREBASE_API_KEY` 在部署時產生。
 

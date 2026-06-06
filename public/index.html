@@ -44,6 +44,8 @@
     <main class="workspace">
       <nav class="tabs" aria-label="功能切換">
         <button class="tab is-active" data-tab="students" type="button">學生</button>
+        <button class="tab" data-tab="courses" type="button">課程</button>
+        <button class="tab" data-tab="teachers" type="button">老師</button>
         <button class="tab" data-tab="accounting" type="button">收款</button>
         <button class="tab" data-tab="payroll" type="button">薪資</button>
         <button class="tab" data-tab="events" type="button">異動</button>
@@ -465,7 +467,7 @@
           <div class="section-heading">
             <div>
               <h2>網頁新增資料</h2>
-              <p class="muted">新學生與新科目會直接進 bearhigh 資料庫與年級大表；Numbers 只保留作每學期大量匯入底稿。</p>
+              <p class="muted">學生、老師、學期、課程與選課是 bearhigh 主檔；Numbers / CSV 只作大量匯入與核對來源。</p>
             </div>
             <div id="manualCourseSummary" class="muted">尚未新增網頁科目</div>
           </div>
@@ -556,7 +558,7 @@
               <input name="note" autocomplete="off">
             </label>
             <div class="actions wide">
-              <button class="primary" type="submit">新增學生</button>
+              <button class="primary" type="submit">新增 / 更新學生</button>
             </div>
           </form>
 
@@ -587,12 +589,16 @@
               <span>堂數</span>
               <input name="sessionCount" inputmode="numeric" placeholder="例：24">
             </label>
+            <label>
+              <span>退費單堂</span>
+              <input name="refundUnitPrice" inputmode="numeric" placeholder="今年度 1000">
+            </label>
             <label class="wide">
               <span>備註</span>
               <input name="note" autocomplete="off">
             </label>
             <div class="actions wide">
-              <button class="primary" type="submit">新增科目欄位</button>
+              <button class="primary" type="submit">新增 / 更新課程</button>
             </div>
           </form>
 
@@ -817,6 +823,116 @@
             </thead>
               <tbody id="classRosterRows"></tbody>
             </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="panel" data-panel="courses">
+        <section class="section-block">
+          <div class="section-heading">
+            <div>
+              <h2>課程主檔</h2>
+              <p class="muted">每一門課都隸屬一個學年度 / 學期與一位老師；點課程可看學生、收費、堂次與進退班。</p>
+            </div>
+          </div>
+          <div class="matrix-filter-bar">
+            <div class="matrix-filter-title">課程篩選</div>
+            <div class="filter-grid">
+              <label>
+                <span>關鍵字</span>
+                <input id="masterCourseKeyword" autocomplete="off" placeholder="課程、年級、老師、學生">
+              </label>
+              <label>
+                <span>學期</span>
+                <select id="masterCourseTermFilter">
+                  <option value="">全部</option>
+                </select>
+              </label>
+              <label>
+                <span>老師</span>
+                <select id="masterCourseTeacherFilter">
+                  <option value="">全部</option>
+                </select>
+              </label>
+              <label class="checkbox-line">
+                <input id="masterCourseArchivedOnly" type="checkbox">
+                <span>只看封存</span>
+              </label>
+            </div>
+          </div>
+          <section class="import-summary" id="masterCourseSummary"></section>
+          <div class="split-view">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>課程</th>
+                    <th>學期</th>
+                    <th>老師</th>
+                    <th>堂數</th>
+                    <th>學生</th>
+                    <th>收費合計</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="masterCourseRows"></tbody>
+              </table>
+            </div>
+            <aside class="detail-panel" id="masterCourseDetail">
+              <p class="empty">選一門課查看學生名單、收款與堂次</p>
+            </aside>
+          </div>
+        </section>
+      </section>
+
+      <section class="panel" data-panel="teachers">
+        <section class="section-block">
+          <div class="section-heading">
+            <div>
+              <h2>老師主檔</h2>
+              <p class="muted">點老師可依學期看開課、學生數、收費與薪資來源。</p>
+            </div>
+          </div>
+          <div class="matrix-filter-bar">
+            <div class="matrix-filter-title">老師篩選</div>
+            <div class="filter-grid">
+              <label>
+                <span>關鍵字</span>
+                <input id="masterTeacherKeyword" autocomplete="off" placeholder="老師、科目、課程">
+              </label>
+              <label>
+                <span>學期</span>
+                <select id="masterTeacherTermFilter">
+                  <option value="">全部</option>
+                </select>
+              </label>
+              <label class="checkbox-line">
+                <input id="masterTeacherArchivedOnly" type="checkbox">
+                <span>只看封存</span>
+              </label>
+            </div>
+          </div>
+          <section class="import-summary" id="masterTeacherSummary"></section>
+          <div class="split-view">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>老師</th>
+                    <th>科目</th>
+                    <th>課程數</th>
+                    <th>學生人次</th>
+                    <th>收費合計</th>
+                    <th>預設薪資</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="masterTeacherRows"></tbody>
+              </table>
+            </div>
+            <aside class="detail-panel" id="masterTeacherDetail">
+              <p class="empty">選一位老師查看課程與薪資來源</p>
+            </aside>
           </div>
         </section>
       </section>
@@ -1130,6 +1246,34 @@
         </div>
 
         <section class="import-summary" id="importSummary"></section>
+
+        <section class="section-block">
+          <div class="section-heading">
+            <div>
+              <h2>轉成 Firebase 主檔</h2>
+              <p class="muted">先 dry-run 檢查會新增 / 更新多少學生、老師、課程、選課與應收；確認後再寫入 bearhigh 主檔。</p>
+            </div>
+            <div class="actions">
+              <button class="ghost" id="previewMasterImport" type="button">Dry-run 主檔轉換</button>
+              <button class="primary" id="applyMasterImport" type="button">寫入主檔</button>
+            </div>
+          </div>
+          <section class="import-summary" id="masterImportSummary"></section>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>類型</th>
+                  <th>新增</th>
+                  <th>更新 / 已存在</th>
+                  <th>略過</th>
+                  <th>說明</th>
+                </tr>
+              </thead>
+              <tbody id="masterImportRows"></tbody>
+            </table>
+          </div>
+        </section>
 
         <div class="table-wrap">
           <table>

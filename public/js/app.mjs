@@ -12,7 +12,8 @@ import {
   get,
   getDatabase,
   ref,
-  set
+  set,
+  update
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js';
 import { firebaseConfig } from './firebase-config.mjs';
 import {
@@ -38,6 +39,9 @@ const state = loadState();
 let clearArmedUntil = 0;
 let currentUser = null;
 let selectedStudentId = null;
+let selectedMasterCourseId = '';
+let selectedMasterTeacherId = '';
+let masterImportPreview = null;
 let payrollPreview = null;
 let payrollSettlement = null;
 let sessionPlanEditorKey = '';
@@ -191,6 +195,23 @@ const elements = {
   manualTeacherOptions: document.querySelector('#manualTeacherOptions'),
   manualTermForm: document.querySelector('#manualTermForm'),
   manualTermOptions: document.querySelector('#manualTermOptions'),
+  masterCourseArchivedOnly: document.querySelector('#masterCourseArchivedOnly'),
+  masterCourseDetail: document.querySelector('#masterCourseDetail'),
+  masterCourseKeyword: document.querySelector('#masterCourseKeyword'),
+  masterCourseRows: document.querySelector('#masterCourseRows'),
+  masterCourseSummary: document.querySelector('#masterCourseSummary'),
+  masterCourseTeacherFilter: document.querySelector('#masterCourseTeacherFilter'),
+  masterCourseTermFilter: document.querySelector('#masterCourseTermFilter'),
+  masterImportRows: document.querySelector('#masterImportRows'),
+  masterImportSummary: document.querySelector('#masterImportSummary'),
+  masterTeacherArchivedOnly: document.querySelector('#masterTeacherArchivedOnly'),
+  masterTeacherDetail: document.querySelector('#masterTeacherDetail'),
+  masterTeacherKeyword: document.querySelector('#masterTeacherKeyword'),
+  masterTeacherRows: document.querySelector('#masterTeacherRows'),
+  masterTeacherSummary: document.querySelector('#masterTeacherSummary'),
+  masterTeacherTermFilter: document.querySelector('#masterTeacherTermFilter'),
+  previewMasterImport: document.querySelector('#previewMasterImport'),
+  applyMasterImport: document.querySelector('#applyMasterImport'),
   studentMatrixHead: document.querySelector('#studentMatrixHead'),
   studentMatrixRows: document.querySelector('#studentMatrixRows'),
   studentMatrixSummary: document.querySelector('#studentMatrixSummary'),
@@ -272,7 +293,6 @@ function saveState() {
     auditLogs: state.auditLogs,
     importSnapshot: null
   };
-  localStorage.setItem(storageKey, JSON.stringify(persistedState));
   const draftCount = state.tuitionPayments.length +
     state.membershipEvents.length +
     state.payrollRuns.length +
@@ -287,7 +307,13 @@ function saveState() {
     state.paymentLedger.length +
     state.auditLogs.length +
     Object.keys(state.courseSessionPlans).length;
-  elements.storageStatus.textContent = `本機草稿 ${draftCount} 筆`;
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(persistedState));
+    elements.storageStatus.textContent = `本機草稿 ${draftCount} 筆`;
+  } catch (error) {
+    elements.storageStatus.textContent = `雲端主檔 ${draftCount} 筆`;
+    setCloudStatus(`本機暫存空間不足，資料仍以雲端主檔為準：${error.name || error.message}`);
+  }
 }
 
 function escapeHtml(value) {
@@ -518,10 +544,25 @@ function importedPayrollDateToIso(value) {
 }
 
 function getStudents() {
-  return [
-    ...(state.importSnapshot?.students || []),
-    ...(state.manualStudents || [])
-  ];
+  const byId = new Map();
+  for (const student of state.importSnapshot?.students || []) {
+    if (student?.id) byId.set(student.id, student);
+  }
+  for (const student of state.manualStudents || []) {
+    if (student?.id) byId.set(student.id, student);
+  }
+  return Array.from(byId.values()).filter((student) => !student.archived);
+}
+
+function getAllStudents() {
+  const byId = new Map();
+  for (const student of state.importSnapshot?.students || []) {
+    if (student?.id) byId.set(student.id, student);
+  }
+  for (const student of state.manualStudents || []) {
+    if (student?.id) byId.set(student.id, student);
+  }
+  return Array.from(byId.values());
 }
 
 function getTuitionEntries() {
@@ -692,6 +733,309 @@ function manualImportCompareRows() {
       a.studentName.localeCompare(b.studentName, 'zh-Hant') ||
       a.manualCourse.localeCompare(b.manualCourse, 'zh-Hant');
   });
+}
+
+function normalizedCourseEntriesForStudent(student) {
+  let currentGroup = '';
+  return (student?.selectedCourses || []).map((course) => {
+    currentGroup = course.group || currentGroup;
+    return {
+      ...course,
+      group: course.group || currentGroup,
+      normalizedGroup: currentGroup,
+      term: inferTermLabel(currentGroup, student?.sheet),
+      subject: canonicalSubject(course.header || ''),
+      label: [currentGroup, course.header, course.column ? `欄 ${course.column}` : ''].filter(Boolean).join(' / ')
+    };
+  });
+}
+
+function inferTermLabel(group, fallbackSheet = '') {
+  const text = String(group || fallbackSheet || '').trim();
+  const yearMatch = text.match(/(\d{3})\s*學年度/);
+  const semester = /下學期|下期/.test(text) ? '下學期' : (/上學期|暑期|上期/.test(text) ? '上學期' : '');
+  if (yearMatch && semester) return `${yearMatch[1]}學年度${semester}`;
+  if (yearMatch) return `${yearMatch[1]}學年度`;
+  return text || '未分學期';
+}
+
+function stableMasterId(prefix, parts) {
+  return `${prefix}_${safeFirebaseKey(parts.filter(Boolean).join('_')).slice(0, 120)}`;
+}
+
+function importedTeacherNameForCourse(courseName, term, sheet) {
+  const text = normalizedCompareText(`${courseName || ''} ${term || ''} ${sheet || ''}`);
+  const match = getTeacherRosterBlocks().find((block) => {
+    const haystack = normalizedCompareText(`${block.title || ''} ${block.sheet || ''} ${block.teacherSheet || ''}`);
+    return haystack.includes(normalizedCompareText(courseName || '')) || text.includes(normalizedCompareText(block.title || ''));
+  });
+  return match?.teacherSheet || '';
+}
+
+function buildMasterImportPlan() {
+  const plan = {
+    students: [],
+    terms: [],
+    teachers: [],
+    courses: [],
+    enrollments: [],
+    receivables: [],
+    stats: {
+      students: { added: 0, existing: 0, skipped: 0 },
+      terms: { added: 0, existing: 0, skipped: 0 },
+      teachers: { added: 0, existing: 0, skipped: 0 },
+      courses: { added: 0, existing: 0, skipped: 0 },
+      enrollments: { added: 0, existing: 0, skipped: 0 },
+      receivables: { added: 0, existing: 0, skipped: 0 }
+    }
+  };
+  const snapshot = state.importSnapshot;
+  if (!snapshot?.students?.length) return plan;
+
+  const existingStudents = new Set((state.manualStudents || []).map((student) => student.id));
+  const existingTerms = new Set((state.manualTerms || []).map((term) => term.label));
+  const existingTeachers = new Set((state.manualTeachers || []).map((teacher) => teacher.name));
+  const existingCourses = new Set((state.manualCourses || []).map((course) => course.id));
+  const existingEnrollments = new Set((state.manualCourseEnrollments || []).map((enrollment) => enrollment.id));
+  const existingReceivables = new Set((state.receivables || []).map((receivable) => receivable.id));
+  const generatedTerms = new Set();
+  const generatedTeachers = new Set();
+  const generatedCourses = new Map();
+  const tuitionEntries = getTuitionEntries();
+
+  for (const student of snapshot.students || []) {
+    if (!student?.id || !studentName(student)) {
+      plan.stats.students.skipped += 1;
+      continue;
+    }
+    const studentRecord = {
+      id: student.id,
+      source: 'masterImport',
+      sourceStudentId: student.id,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      sheet: student.sheet || '',
+      row: student.row || '',
+      selectedCourses: student.selectedCourses || [],
+      profile: {
+        ...(student.profile || {}),
+        name: studentName(student),
+        highSchool: studentSchool(student),
+        note: student.profile?.note || ''
+      }
+    };
+    plan.students.push(studentRecord);
+    plan.stats.students[existingStudents.has(studentRecord.id) ? 'existing' : 'added'] += 1;
+
+    for (const courseEntry of normalizedCourseEntriesForStudent(student)) {
+      if (!courseEntry.header) continue;
+      const term = courseEntry.term || '未分學期';
+      generatedTerms.add(term);
+      const courseName = courseEntry.header;
+      const courseId = stableMasterId('course', [student.sheet, term, courseEntry.normalizedGroup, courseName, courseEntry.column]);
+      const teacherName = importedTeacherNameForCourse(courseName, term, student.sheet);
+      if (teacherName) generatedTeachers.add(teacherName);
+      if (!generatedCourses.has(courseId)) {
+        generatedCourses.set(courseId, {
+          id: courseId,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          cohort: student.sheet || '',
+          term,
+          subject: courseEntry.subject,
+          courseName,
+          teacherName,
+          defaultTuition: 21600,
+          refundUnitPrice: 1000,
+          sessionCount: 24,
+          source: 'masterImport',
+          sourceColumn: courseEntry.column || '',
+          sourceGroup: courseEntry.normalizedGroup || '',
+          note: courseEntry.label
+        });
+      }
+      const tuition = courseTuitionForStudent(student, courseKey(courseEntry), tuitionEntries) || {};
+      const tuitionAmount = Math.round(parseNumber(tuition.amount || 0));
+      const enrollmentId = `manual_enrollment_${safeFirebaseKey(courseId)}_${safeFirebaseKey(student.id)}`;
+      const enrollment = {
+        id: enrollmentId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        courseId,
+        courseName,
+        studentId: student.id,
+        studentName: studentName(student),
+        tuitionAmount,
+        originalAmount: tuitionAmount,
+        discountAmount: 0,
+        packageDiscountAmount: 0,
+        voucherAmount: 0,
+        dueDate: todayIso(),
+        paymentDate: '',
+        status: 'active',
+        source: 'masterImport',
+        note: tuition.label || courseEntry.label
+      };
+      plan.enrollments.push(enrollment);
+      plan.stats.enrollments[existingEnrollments.has(enrollmentId) ? 'existing' : 'added'] += 1;
+      const receivableId = receivableIdForEnrollment(enrollmentId);
+      const receivable = {
+        id: receivableId,
+        enrollmentId,
+        studentId: student.id,
+        studentName: studentName(student),
+        courseId,
+        courseName,
+        dueDate: todayIso(),
+        originalAmount: tuitionAmount,
+        amount: tuitionAmount,
+        paidAmount: 0,
+        balance: tuitionAmount,
+        status: tuitionAmount > 0 ? 'open' : 'void',
+        followUpStatus: tuitionAmount > 0 ? '待確認' : '免建立',
+        incomeAccountId: 'income_tuition',
+        note: tuition.label || '匯入主檔自動建立',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      plan.receivables.push(receivable);
+      plan.stats.receivables[existingReceivables.has(receivableId) ? 'existing' : (tuitionAmount > 0 ? 'added' : 'skipped')] += 1;
+    }
+  }
+
+  for (const term of generatedTerms) {
+    const record = {
+      id: stableMasterId('manual_term', [term]),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      label: term,
+      startMonth: '',
+      endMonth: '',
+      note: '匯入主檔自動建立'
+    };
+    plan.terms.push(record);
+    plan.stats.terms[existingTerms.has(term) ? 'existing' : 'added'] += 1;
+  }
+  for (const teacherName of generatedTeachers) {
+    const record = {
+      id: stableMasterId('manual_teacher', [teacherName]),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      name: teacherName,
+      subject: canonicalSubject(teacherName),
+      defaultShare: 50,
+      defaultFixedRate: 0,
+      contact: '',
+      note: '匯入主檔自動建立'
+    };
+    plan.teachers.push(record);
+    plan.stats.teachers[existingTeachers.has(teacherName) ? 'existing' : 'added'] += 1;
+  }
+  for (const course of generatedCourses.values()) {
+    plan.courses.push(course);
+    plan.stats.courses[existingCourses.has(course.id) ? 'existing' : 'added'] += 1;
+  }
+  return plan;
+}
+
+function mergeByIdIntoState(key, rows) {
+  const existing = new Map((state[key] || []).map((row) => [row.id, row]));
+  for (const row of rows || []) {
+    if (!row?.id) continue;
+    existing.set(row.id, {
+      ...(existing.get(row.id) || {}),
+      ...row,
+      createdAt: existing.get(row.id)?.createdAt || row.createdAt
+    });
+  }
+  state[key] = Array.from(existing.values());
+}
+
+function masterCourseRowsData() {
+  const enrollments = state.manualCourseEnrollments || [];
+  const receivableMap = new Map((state.receivables || []).map((receivable) => [receivable.enrollmentId, receivable]));
+  return (state.manualCourses || []).map((course) => {
+    const courseEnrollments = enrollments.filter((enrollment) => enrollment.courseId === course.id && enrollment.status !== 'archived');
+    const feeTotal = courseEnrollments.reduce((sum, enrollment) => {
+      const receivable = receivableMap.get(enrollment.id);
+      return sum + parseNumber(receivable?.amount ?? enrollment.tuitionAmount);
+    }, 0);
+    return {
+      ...course,
+      enrollmentCount: courseEnrollments.length,
+      feeTotal,
+      enrollments: courseEnrollments
+    };
+  });
+}
+
+function masterTeacherRowsData() {
+  const courses = masterCourseRowsData();
+  const rows = new Map();
+  for (const teacher of state.manualTeachers || []) {
+    rows.set(teacher.id, {
+      ...teacher,
+      courseCount: 0,
+      enrollmentCount: 0,
+      feeTotal: 0,
+      courses: []
+    });
+  }
+  for (const course of courses) {
+    const teacherName = String(course.teacherName || '未指定老師').trim();
+    const existing = Array.from(rows.values()).find((row) => row.name === teacherName);
+    const id = existing?.id || stableMasterId('virtual_teacher', [teacherName]);
+    const row = rows.get(id) || {
+      id,
+      name: teacherName,
+      subject: canonicalSubject(teacherName),
+      defaultShare: 50,
+      defaultFixedRate: 0,
+      archived: false,
+      courseCount: 0,
+      enrollmentCount: 0,
+      feeTotal: 0,
+      courses: []
+    };
+    row.courseCount += 1;
+    row.enrollmentCount += course.enrollmentCount;
+    row.feeTotal += course.feeTotal;
+    row.courses.push(course);
+    rows.set(id, row);
+  }
+  return Array.from(rows.values());
+}
+
+function masterCourseMatchesFilters(course) {
+  const keyword = normalizedCompareText(elements.masterCourseKeyword?.value || '');
+  const term = elements.masterCourseTermFilter?.value || '';
+  const teacher = elements.masterCourseTeacherFilter?.value || '';
+  const archivedOnly = !!elements.masterCourseArchivedOnly?.checked;
+  const text = normalizedCompareText([
+    course.courseName,
+    course.term,
+    course.cohort,
+    course.teacherName,
+    ...(course.enrollments || []).map((enrollment) => enrollment.studentName)
+  ].join(' '));
+  return (!keyword || text.includes(keyword)) &&
+    (!term || course.term === term) &&
+    (!teacher || course.teacherName === teacher) &&
+    (archivedOnly ? course.archived : !course.archived);
+}
+
+function masterTeacherMatchesFilters(teacher) {
+  const keyword = normalizedCompareText(elements.masterTeacherKeyword?.value || '');
+  const term = elements.masterTeacherTermFilter?.value || '';
+  const archivedOnly = !!elements.masterTeacherArchivedOnly?.checked;
+  const text = normalizedCompareText([
+    teacher.name,
+    teacher.subject,
+    ...(teacher.courses || []).map((course) => `${course.courseName} ${course.term}`)
+  ].join(' '));
+  return (!keyword || text.includes(keyword)) &&
+    (!term || (teacher.courses || []).some((course) => course.term === term)) &&
+    (archivedOnly ? teacher.archived : !teacher.archived);
 }
 
 function renderManualImportCompare() {
@@ -1521,6 +1865,227 @@ function renderManualCourses() {
         </tr>
       `).join('')
     : emptyRow(5);
+}
+
+function renderMasterFilterOptions() {
+  const courses = masterCourseRowsData();
+  const terms = Array.from(new Set([
+    ...courses.map((course) => course.term).filter(Boolean),
+    ...(state.manualTerms || []).map((term) => term.label).filter(Boolean)
+  ])).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+  const teachers = Array.from(new Set([
+    ...courses.map((course) => course.teacherName).filter(Boolean),
+    ...(state.manualTeachers || []).map((teacher) => teacher.name).filter(Boolean)
+  ])).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+
+  const currentCourseTerm = elements.masterCourseTermFilter?.value || '';
+  const currentTeacherTerm = elements.masterTeacherTermFilter?.value || '';
+  const currentCourseTeacher = elements.masterCourseTeacherFilter?.value || '';
+  if (elements.masterCourseTermFilter) {
+    elements.masterCourseTermFilter.innerHTML = '<option value="">全部</option>' +
+      terms.map((term) => `<option value="${escapeHtml(term)}">${escapeHtml(term)}</option>`).join('');
+    elements.masterCourseTermFilter.value = terms.includes(currentCourseTerm) ? currentCourseTerm : '';
+  }
+  if (elements.masterTeacherTermFilter) {
+    elements.masterTeacherTermFilter.innerHTML = '<option value="">全部</option>' +
+      terms.map((term) => `<option value="${escapeHtml(term)}">${escapeHtml(term)}</option>`).join('');
+    elements.masterTeacherTermFilter.value = terms.includes(currentTeacherTerm) ? currentTeacherTerm : '';
+  }
+  if (elements.masterCourseTeacherFilter) {
+    elements.masterCourseTeacherFilter.innerHTML = '<option value="">全部</option>' +
+      teachers.map((teacher) => `<option value="${escapeHtml(teacher)}">${escapeHtml(teacher)}</option>`).join('');
+    elements.masterCourseTeacherFilter.value = teachers.includes(currentCourseTeacher) ? currentCourseTeacher : '';
+  }
+}
+
+function renderMasterCourses() {
+  if (!elements.masterCourseRows) return;
+  renderMasterFilterOptions();
+  const courses = masterCourseRowsData();
+  const visibleCourses = courses.filter(masterCourseMatchesFilters)
+    .sort((a, b) => `${a.term} ${a.cohort} ${a.courseName}`.localeCompare(`${b.term} ${b.cohort} ${b.courseName}`, 'zh-Hant'));
+  elements.masterCourseSummary.innerHTML = `
+    <div class="record-item">
+      <strong>課程 ${formatMoney(courses.filter((course) => !course.archived).length)} 門</strong>
+      <p>目前顯示 ${formatMoney(visibleCourses.length)} 門，選課 ${formatMoney(courses.reduce((sum, course) => sum + course.enrollmentCount, 0))} 筆，應收 ${formatMoney(courses.reduce((sum, course) => sum + course.feeTotal, 0))}。</p>
+    </div>
+  `;
+  elements.masterCourseRows.innerHTML = visibleCourses.length
+    ? visibleCourses.map((course) => `
+      <tr class="${selectedMasterCourseId === course.id ? 'is-selected' : ''}">
+        <td><strong>${escapeHtml(course.courseName || '')}</strong><br><span class="muted">${escapeHtml(course.cohort || '')}</span></td>
+        <td>${escapeHtml(course.term || '未分學期')}</td>
+        <td>${escapeHtml(course.teacherName || '未指定')}</td>
+        <td class="money">${formatMoney(parseNumber(course.sessionCount) || 24)}</td>
+        <td class="money">${formatMoney(course.enrollmentCount)}</td>
+        <td class="money">${formatMoney(course.feeTotal)}</td>
+        <td>
+          <button class="ghost tiny-button" data-view-master-course="${escapeHtml(course.id)}" type="button">查看</button>
+          <button class="ghost tiny-button" data-archive-master-course="${escapeHtml(course.id)}" type="button">${course.archived ? '復原' : '封存'}</button>
+        </td>
+      </tr>
+    `).join('')
+    : emptyRow(7);
+  renderMasterCourseDetail();
+}
+
+function renderMasterCourseDetail() {
+  if (!elements.masterCourseDetail) return;
+  const course = masterCourseRowsData().find((row) => row.id === selectedMasterCourseId);
+  if (!course) {
+    elements.masterCourseDetail.innerHTML = '<p class="empty">選一門課查看學生名單、收款與堂次</p>';
+    return;
+  }
+  const { studentsById } = buildStudentIndexes();
+  const receivableMap = new Map((state.receivables || []).map((receivable) => [receivable.enrollmentId, receivable]));
+  const sessionPlans = Object.values(state.courseSessionPlans || {}).filter((plan) => (
+    String(plan.rosterKey || '').includes(course.id) || String(plan.id || '').includes(course.id) || plan.courseName === manualCourseLabel(course)
+  ));
+  const events = (state.membershipEvents || []).filter((event) => event.courseName === course.courseName || event.courseName === manualCourseLabel(course));
+  const studentRows = (course.enrollments || []).map((enrollment) => {
+    const student = studentsById.get(enrollment.studentId);
+    const receivable = receivableMap.get(enrollment.id);
+    return `
+      <tr>
+        <td><strong>${escapeHtml(enrollment.studentName || studentName(student) || '')}</strong><br><span class="muted">${escapeHtml(studentSchool(student))}</span></td>
+        <td class="money">${formatMoney(parseNumber(receivable?.amount ?? enrollment.tuitionAmount))}</td>
+        <td class="money">${formatMoney(parseNumber(receivable?.paidAmount))}</td>
+        <td>${escapeHtml(receivableStatusLabel(receivable?.status || enrollment.status || 'open'))}</td>
+        <td>${escapeHtml(enrollment.note || '')}</td>
+      </tr>
+    `;
+  }).join('');
+  elements.masterCourseDetail.innerHTML = `
+    <h3>${escapeHtml(course.courseName)}</h3>
+    <p class="muted">${escapeHtml([course.term, course.cohort, course.teacherName].filter(Boolean).join(' / '))}</p>
+    <div class="profile-grid">
+      <div><strong>${formatMoney(course.enrollmentCount)}</strong><span>學生</span></div>
+      <div><strong>${formatMoney(course.feeTotal)}</strong><span>收費合計</span></div>
+      <div><strong>${formatMoney(parseNumber(course.sessionCount) || 24)}</strong><span>總堂數</span></div>
+      <div><strong>${formatMoney(parseNumber(course.refundUnitPrice) || 1000)}</strong><span>退費單堂</span></div>
+    </div>
+    <h4>學生名單 / 收款</h4>
+    <div class="table-wrap embedded-table">
+      <table>
+        <thead><tr><th>學生</th><th>應收</th><th>已收</th><th>狀態</th><th>備註</th></tr></thead>
+        <tbody>${studentRows || emptyRow(5)}</tbody>
+      </table>
+    </div>
+    <h4>堂次日期</h4>
+    <div class="mini-record-list">
+      ${sessionPlans.length ? sessionPlans.map((plan) => `<div>${escapeHtml(plan.month || '')}：${escapeHtml((plan.sessions || []).map((row) => `第${row.sessionNo}堂 ${row.date}`).join('、'))}</div>`).join('') : '<div class="muted">尚未設定堂次；到薪資頁處理堂次日期。</div>'}
+    </div>
+    <h4>進退班異動</h4>
+    <div class="mini-record-list">
+      ${events.length ? events.map((event) => `<div>${escapeHtml(event.date || '')} ${escapeHtml(event.studentName || '')} ${escapeHtml(event.action || '')}${event.sessionNo ? ` 第 ${escapeHtml(event.sessionNo)} 堂` : ''}</div>`).join('') : '<div class="muted">尚無異動。</div>'}
+    </div>
+  `;
+}
+
+function renderMasterTeachers() {
+  if (!elements.masterTeacherRows) return;
+  renderMasterFilterOptions();
+  const teachers = masterTeacherRowsData();
+  const visibleTeachers = teachers.filter(masterTeacherMatchesFilters)
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+  elements.masterTeacherSummary.innerHTML = `
+    <div class="record-item">
+      <strong>老師 ${formatMoney(teachers.filter((teacher) => !teacher.archived).length)} 位</strong>
+      <p>目前顯示 ${formatMoney(visibleTeachers.length)} 位，課程 ${formatMoney(teachers.reduce((sum, teacher) => sum + teacher.courseCount, 0))} 門，學生人次 ${formatMoney(teachers.reduce((sum, teacher) => sum + teacher.enrollmentCount, 0))}。</p>
+    </div>
+  `;
+  elements.masterTeacherRows.innerHTML = visibleTeachers.length
+    ? visibleTeachers.map((teacher) => `
+      <tr class="${selectedMasterTeacherId === teacher.id ? 'is-selected' : ''}">
+        <td><strong>${escapeHtml(teacher.name || '')}</strong></td>
+        <td>${escapeHtml(teacher.subject || '')}</td>
+        <td class="money">${formatMoney(teacher.courseCount)}</td>
+        <td class="money">${formatMoney(teacher.enrollmentCount)}</td>
+        <td class="money">${formatMoney(teacher.feeTotal)}</td>
+        <td>${escapeHtml(teacher.defaultFixedRate ? `鐘點 ${formatMoney(teacher.defaultFixedRate)}` : `分潤 ${formatMoney(teacher.defaultShare || 50)}%`)}</td>
+        <td>
+          <button class="ghost tiny-button" data-view-master-teacher="${escapeHtml(teacher.id)}" type="button">查看</button>
+          ${teacher.id.startsWith('virtual_teacher') ? '' : `<button class="ghost tiny-button" data-archive-master-teacher="${escapeHtml(teacher.id)}" type="button">${teacher.archived ? '復原' : '封存'}</button>`}
+        </td>
+      </tr>
+    `).join('')
+    : emptyRow(7);
+  renderMasterTeacherDetail();
+}
+
+function renderMasterTeacherDetail() {
+  if (!elements.masterTeacherDetail) return;
+  const teacher = masterTeacherRowsData().find((row) => row.id === selectedMasterTeacherId);
+  if (!teacher) {
+    elements.masterTeacherDetail.innerHTML = '<p class="empty">選一位老師查看課程與薪資來源</p>';
+    return;
+  }
+  const courseRows = (teacher.courses || [])
+    .filter((course) => !elements.masterTeacherTermFilter?.value || course.term === elements.masterTeacherTermFilter.value)
+    .sort((a, b) => `${a.term} ${a.courseName}`.localeCompare(`${b.term} ${b.courseName}`, 'zh-Hant'))
+    .map((course) => `
+      <tr>
+        <td><strong>${escapeHtml(course.courseName)}</strong><br><span class="muted">${escapeHtml(course.cohort || '')}</span></td>
+        <td>${escapeHtml(course.term || '')}</td>
+        <td class="money">${formatMoney(course.enrollmentCount)}</td>
+        <td class="money">${formatMoney(course.feeTotal)}</td>
+        <td><button class="ghost tiny-button" data-view-master-course="${escapeHtml(course.id)}" type="button">看課程</button></td>
+      </tr>
+    `).join('');
+  elements.masterTeacherDetail.innerHTML = `
+    <h3>${escapeHtml(teacher.name)}</h3>
+    <p class="muted">${escapeHtml([teacher.subject, teacher.contact].filter(Boolean).join(' / '))}</p>
+    <div class="profile-grid">
+      <div><strong>${formatMoney(teacher.courseCount)}</strong><span>課程</span></div>
+      <div><strong>${formatMoney(teacher.enrollmentCount)}</strong><span>學生人次</span></div>
+      <div><strong>${formatMoney(teacher.feeTotal)}</strong><span>收費合計</span></div>
+      <div><strong>${escapeHtml(teacher.defaultFixedRate ? `鐘點 ${formatMoney(teacher.defaultFixedRate)}` : `分潤 ${formatMoney(teacher.defaultShare || 50)}%`)}</strong><span>預設薪資</span></div>
+    </div>
+    <h4>開設課程</h4>
+    <div class="table-wrap embedded-table">
+      <table>
+        <thead><tr><th>課程</th><th>學期</th><th>學生</th><th>收費</th><th>操作</th></tr></thead>
+        <tbody>${courseRows || emptyRow(5)}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderMasterImportPreview() {
+  if (!elements.masterImportRows) return;
+  const plan = masterImportPreview || {
+    stats: {
+      students: { added: 0, existing: 0, skipped: 0 },
+      terms: { added: 0, existing: 0, skipped: 0 },
+      teachers: { added: 0, existing: 0, skipped: 0 },
+      courses: { added: 0, existing: 0, skipped: 0 },
+      enrollments: { added: 0, existing: 0, skipped: 0 },
+      receivables: { added: 0, existing: 0, skipped: 0 }
+    }
+  };
+  const labels = {
+    students: '學生',
+    terms: '學期',
+    teachers: '老師',
+    courses: '課程',
+    enrollments: '選課',
+    receivables: '應收'
+  };
+  elements.masterImportSummary.innerHTML = state.importSnapshot
+    ? `<div class="record-item"><strong>目前快照可轉主檔</strong><p>學生 ${formatMoney(state.importSnapshot.students?.length || 0)} 位；按 Dry-run 後才會計算新增 / 已存在數量，轉換後會保留原始匯入快照供核對。</p></div>`
+    : '<div class="record-item"><strong>尚未載入匯入快照</strong><p>請先載入雲端資料或 Numbers 快照。</p></div>';
+  elements.masterImportRows.innerHTML = Object.entries(labels).map(([key, label]) => {
+    const stat = plan.stats[key] || { added: 0, existing: 0, skipped: 0 };
+    return `
+      <tr>
+        <td>${escapeHtml(label)}</td>
+        <td class="money">${formatMoney(stat.added)}</td>
+        <td class="money">${formatMoney(stat.existing)}</td>
+        <td class="money">${formatMoney(stat.skipped)}</td>
+        <td>${escapeHtml(key === 'receivables' ? '0 元選課不建立有效應收' : '用穩定 id 去重，可重複 dry-run')}</td>
+      </tr>
+    `;
+  }).join('');
 }
 
 function renderStudentOverviews() {
@@ -3143,6 +3708,26 @@ async function saveCloudRecord(kind, record, key = record.id) {
   setCloudStatus('雲端已同步');
 }
 
+async function saveCloudRecordsBatch(recordsByKind) {
+  if (!currentUser) return;
+  const syncedAt = new Date().toISOString();
+  const syncedBy = currentUser.email || currentUser.uid;
+  const updates = {};
+  for (const [kind, rows] of Object.entries(recordsByKind || {})) {
+    for (const row of rows || []) {
+      if (!row?.id) continue;
+      updates[`manual/${kind}/${safeFirebaseKey(row.id)}`] = {
+        ...row,
+        syncedAt,
+        syncedBy
+      };
+    }
+  }
+  if (!Object.keys(updates).length) return;
+  await update(accountingRef(''), updates);
+  setCloudStatus('雲端已批次同步');
+}
+
 async function addMembershipEvent(data) {
   const record = {
     id: nowId('event'),
@@ -3732,6 +4317,9 @@ function renderAll() {
   renderAccounting();
   renderRecords();
   renderManualCourses();
+  renderMasterCourses();
+  renderMasterTeachers();
+  renderMasterImportPreview();
   renderManualImportCompare();
   renderStudentCenter();
   renderStudentMatrix();
@@ -3911,15 +4499,23 @@ elements.manualTeacherForm.addEventListener('submit', async (event) => {
 elements.manualStudentForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const data = Object.fromEntries(new FormData(elements.manualStudentForm).entries());
+  const name = String(data.name || '').trim();
+  const cohort = String(data.cohort || '').trim();
+  const existingIndex = (state.manualStudents || []).findIndex((student) => (
+    normalizedCompareText(studentName(student)) === normalizedCompareText(name) &&
+    normalizedCompareText(student.sheet) === normalizedCompareText(cohort)
+  ));
   const record = {
-    id: nowId('manual_student'),
+    id: existingIndex >= 0 ? state.manualStudents[existingIndex].id : nowId('manual_student'),
     source: 'manual',
-    createdAt: new Date().toISOString(),
-    sheet: data.cohort,
-    row: '網頁新增',
-    selectedCourses: [],
+    createdAt: existingIndex >= 0 ? state.manualStudents[existingIndex].createdAt : new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    sheet: cohort,
+    row: existingIndex >= 0 ? state.manualStudents[existingIndex].row : '網頁新增',
+    selectedCourses: existingIndex >= 0 ? (state.manualStudents[existingIndex].selectedCourses || []) : [],
     profile: {
-      name: String(data.name || '').trim(),
+      ...(existingIndex >= 0 ? state.manualStudents[existingIndex].profile || {} : {}),
+      name,
       highSchool: String(data.highSchool || '').trim(),
       juniorHigh: String(data.juniorHigh || '').trim(),
       grade: String(data.grade || '').trim(),
@@ -3929,7 +4525,11 @@ elements.manualStudentForm.addEventListener('submit', async (event) => {
     }
   };
   if (!record.profile.name) return;
-  state.manualStudents.push(record);
+  if (existingIndex >= 0) {
+    state.manualStudents[existingIndex] = record;
+  } else {
+    state.manualStudents.push(record);
+  }
   elements.manualStudentForm.reset();
   renderAll();
   try {
@@ -3942,19 +4542,33 @@ elements.manualStudentForm.addEventListener('submit', async (event) => {
 elements.manualCourseForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const data = Object.fromEntries(new FormData(elements.manualCourseForm).entries());
+  const cohort = String(data.cohort || '').trim();
+  const term = String(data.term || '').trim();
+  const courseName = String(data.courseName || '').trim();
+  const existingIndex = (state.manualCourses || []).findIndex((course) => (
+    normalizedCompareText(course.cohort) === normalizedCompareText(cohort) &&
+    normalizedCompareText(course.term) === normalizedCompareText(term) &&
+    normalizedCompareText(course.courseName) === normalizedCompareText(courseName)
+  ));
   const record = {
-    id: nowId('manual_course'),
-    createdAt: new Date().toISOString(),
-    cohort: String(data.cohort || '').trim(),
-    term: String(data.term || '').trim(),
-    courseName: String(data.courseName || '').trim(),
+    id: existingIndex >= 0 ? state.manualCourses[existingIndex].id : nowId('manual_course'),
+    createdAt: existingIndex >= 0 ? state.manualCourses[existingIndex].createdAt : new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    cohort,
+    term,
+    courseName,
     teacherName: String(data.teacherName || '').trim(),
     defaultTuition: Math.round(parseNumber(data.defaultTuition)),
+    refundUnitPrice: Math.round(parseNumber(data.refundUnitPrice)) || 1000,
     sessionCount: Math.round(parseNumber(data.sessionCount)),
     note: String(data.note || '').trim()
   };
   if (!record.courseName) return;
-  state.manualCourses.push(record);
+  if (existingIndex >= 0) {
+    state.manualCourses[existingIndex] = record;
+  } else {
+    state.manualCourses.push(record);
+  }
   elements.manualCourseForm.reset();
   renderAll();
   try {
@@ -4824,6 +5438,127 @@ elements.studentDetail.addEventListener('click', (event) => {
     saveCloudRecord('studentNotes', record).catch((error) => {
       setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
     });
+  }
+});
+
+[
+  elements.masterCourseKeyword,
+  elements.masterCourseTermFilter,
+  elements.masterCourseTeacherFilter,
+  elements.masterCourseArchivedOnly
+].forEach((element) => {
+  element?.addEventListener('input', renderMasterCourses);
+  element?.addEventListener('change', renderMasterCourses);
+});
+
+[
+  elements.masterTeacherKeyword,
+  elements.masterTeacherTermFilter,
+  elements.masterTeacherArchivedOnly
+].forEach((element) => {
+  element?.addEventListener('input', renderMasterTeachers);
+  element?.addEventListener('change', renderMasterTeachers);
+});
+
+elements.masterCourseRows?.addEventListener('click', async (event) => {
+  const viewButton = event.target.closest('[data-view-master-course]');
+  if (viewButton) {
+    selectedMasterCourseId = viewButton.dataset.viewMasterCourse;
+    renderMasterCourses();
+    return;
+  }
+  const archiveButton = event.target.closest('[data-archive-master-course]');
+  if (!archiveButton) return;
+  const course = (state.manualCourses || []).find((row) => row.id === archiveButton.dataset.archiveMasterCourse);
+  if (!course) return;
+  const before = { ...course };
+  course.archived = !course.archived;
+  course.updatedAt = new Date().toISOString();
+  renderAll();
+  await recordAudit('course', course.id, course.archived ? 'archive' : 'restore', before, course, '課程主檔封存狀態更新');
+  try {
+    await saveCloudRecord('manualCourses', course);
+  } catch (error) {
+    setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
+  }
+});
+
+elements.masterCourseDetail?.addEventListener('click', (event) => {
+  const viewButton = event.target.closest('[data-view-master-course]');
+  if (!viewButton) return;
+  selectedMasterCourseId = viewButton.dataset.viewMasterCourse;
+  setActiveTab('courses');
+  renderMasterCourses();
+});
+
+elements.masterTeacherRows?.addEventListener('click', async (event) => {
+  const viewButton = event.target.closest('[data-view-master-teacher]');
+  if (viewButton) {
+    selectedMasterTeacherId = viewButton.dataset.viewMasterTeacher;
+    renderMasterTeachers();
+    return;
+  }
+  const archiveButton = event.target.closest('[data-archive-master-teacher]');
+  if (!archiveButton) return;
+  const teacher = (state.manualTeachers || []).find((row) => row.id === archiveButton.dataset.archiveMasterTeacher);
+  if (!teacher) return;
+  const before = { ...teacher };
+  teacher.archived = !teacher.archived;
+  teacher.updatedAt = new Date().toISOString();
+  renderAll();
+  await recordAudit('teacher', teacher.id, teacher.archived ? 'archive' : 'restore', before, teacher, '老師主檔封存狀態更新');
+  try {
+    await saveCloudRecord('manualTeachers', teacher);
+  } catch (error) {
+    setCloudStatus(`雲端寫入失敗：${error.code || error.message}`);
+  }
+});
+
+elements.masterTeacherDetail?.addEventListener('click', (event) => {
+  const viewButton = event.target.closest('[data-view-master-course]');
+  if (!viewButton) return;
+  selectedMasterCourseId = viewButton.dataset.viewMasterCourse;
+  setActiveTab('courses');
+  renderMasterCourses();
+});
+
+elements.previewMasterImport?.addEventListener('click', () => {
+  masterImportPreview = buildMasterImportPlan();
+  renderMasterImportPreview();
+  const stats = masterImportPreview.stats;
+  setCloudStatus(`Dry-run 完成：學生 ${formatMoney(stats.students.added)} 新增、課程 ${formatMoney(stats.courses.added)} 新增、選課 ${formatMoney(stats.enrollments.added)} 新增`);
+});
+
+elements.applyMasterImport?.addEventListener('click', async () => {
+  const plan = masterImportPreview || buildMasterImportPlan();
+  if (!state.importSnapshot?.students?.length) {
+    setCloudStatus('請先載入匯入快照');
+    return;
+  }
+  const existingReceivables = new Set((state.receivables || []).map((receivable) => receivable.id));
+  const newReceivables = plan.receivables.filter((receivable) => parseNumber(receivable.amount) > 0 && !existingReceivables.has(receivable.id));
+  mergeByIdIntoState('manualStudents', plan.students);
+  mergeByIdIntoState('manualTerms', plan.terms);
+  mergeByIdIntoState('manualTeachers', plan.teachers);
+  mergeByIdIntoState('manualCourses', plan.courses);
+  mergeByIdIntoState('manualCourseEnrollments', plan.enrollments);
+  mergeByIdIntoState('receivables', newReceivables);
+  recomputeAllReceivables();
+  masterImportPreview = buildMasterImportPlan();
+  renderAll();
+  setCloudStatus('主檔已寫入本機，開始同步雲端');
+  try {
+    await saveCloudRecordsBatch({
+      manualStudents: plan.students,
+      manualTerms: plan.terms,
+      manualTeachers: plan.teachers,
+      manualCourses: plan.courses,
+      manualCourseEnrollments: plan.enrollments,
+      receivables: newReceivables
+    });
+    setCloudStatus('主檔已同步雲端');
+  } catch (error) {
+    setCloudStatus(`主檔同步中斷：${error.code || error.message}`);
   }
 });
 
