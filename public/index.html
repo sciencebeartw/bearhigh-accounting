@@ -43,15 +43,240 @@
 
     <main class="workspace">
       <nav class="tabs" aria-label="功能切換">
-        <button class="tab is-active" data-tab="students" type="button">學生</button>
-        <button class="tab" data-tab="courses" type="button">課程</button>
-        <button class="tab" data-tab="teachers" type="button">老師</button>
-        <button class="tab" data-tab="accounting" type="button">收款</button>
-        <button class="tab" data-tab="payroll" type="button">薪資</button>
-        <button class="tab" data-tab="events" type="button">異動</button>
+        <button class="tab is-active" data-tab="student-ledger" type="button">學生資料表</button>
+        <button class="tab" data-tab="teacher-course-ledger" type="button">老師課程表</button>
+        <button class="tab" data-tab="movement-ledger" type="button">異動收退費</button>
+        <button class="tab" data-tab="teacher-payroll-ledger" type="button">老師薪資表</button>
+        <button class="tab" data-tab="students" type="button">舊學生</button>
+        <button class="tab" data-tab="courses" type="button">舊課程</button>
+        <button class="tab" data-tab="teachers" type="button">舊老師</button>
+        <button class="tab" data-tab="accounting" type="button">舊收款</button>
+        <button class="tab" data-tab="payroll" type="button">舊薪資</button>
+        <button class="tab" data-tab="events" type="button">舊異動</button>
         <button class="tab" data-tab="import" type="button">匯入</button>
         <button class="tab" data-tab="records" type="button">紀錄</button>
       </nav>
+
+      <section class="panel is-active" data-panel="student-ledger">
+        <section class="section-block clean-workspace">
+          <div class="section-heading">
+            <div>
+              <h2>學生資料表</h2>
+              <p class="muted">從學生出發，核對基本資料、各學年度修課、合報優惠、收款與退班退費。</p>
+            </div>
+          </div>
+          <div class="matrix-filter-bar">
+            <div class="matrix-filter-title">學生篩選</div>
+            <div class="filter-grid">
+              <label>
+                <span>年級</span>
+                <select id="cleanStudentGradeFilter">
+                  <option value="">全部</option>
+                </select>
+              </label>
+              <label>
+                <span>搜尋</span>
+                <input id="cleanStudentSearch" autocomplete="off" placeholder="姓名、學校、課程">
+              </label>
+              <label class="wide">
+                <span>學生</span>
+                <select id="cleanStudentSelect"></select>
+              </label>
+              <label>
+                <span>課程篩選</span>
+                <select id="cleanStudentCourseFilter">
+                  <option value="">全部課程</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <section class="import-summary" id="cleanStudentSummary"></section>
+          <div class="split-view clean-split">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>學年度 / 學期</th>
+                    <th>課程</th>
+                    <th>老師</th>
+                    <th>應收 / 原價</th>
+                    <th>合報 / 抵用</th>
+                    <th>收款 / 退費</th>
+                    <th>狀態</th>
+                  </tr>
+                </thead>
+                <tbody id="cleanStudentCourseRows"></tbody>
+              </table>
+            </div>
+            <aside class="detail-panel" id="cleanStudentDetail">
+              <p class="empty">選一位學生查看資料</p>
+            </aside>
+          </div>
+        </section>
+      </section>
+
+      <section class="panel" data-panel="teacher-course-ledger">
+        <section class="section-block clean-workspace">
+          <div class="section-heading">
+            <div>
+              <h2>老師課程表</h2>
+              <p class="muted">從老師出發，依學期看課程、人數名單、每堂學生費用與收費合計。</p>
+            </div>
+          </div>
+          <div class="matrix-filter-bar">
+            <div class="matrix-filter-title">老師篩選</div>
+            <div class="filter-grid">
+              <label>
+                <span>學期</span>
+                <select id="cleanTeacherTermFilter">
+                  <option value="">全部</option>
+                </select>
+              </label>
+              <label>
+                <span>搜尋</span>
+                <input id="cleanTeacherSearch" autocomplete="off" placeholder="老師、課程、科目">
+              </label>
+              <label class="wide">
+                <span>老師</span>
+                <select id="cleanTeacherSelect"></select>
+              </label>
+            </div>
+          </div>
+          <section class="import-summary" id="cleanTeacherSummary"></section>
+          <div class="split-view clean-split">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>學期</th>
+                    <th>課程</th>
+                    <th>人數</th>
+                    <th>總堂數</th>
+                    <th>每堂平均</th>
+                    <th>收費合計</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="cleanTeacherCourseRows"></tbody>
+              </table>
+            </div>
+            <aside class="detail-panel" id="cleanTeacherCourseDetail">
+              <p class="empty">選一位老師，再點課程查看名單</p>
+            </aside>
+          </div>
+        </section>
+      </section>
+
+      <section class="panel" data-panel="movement-ledger">
+        <section class="section-block clean-workspace">
+          <div class="section-heading">
+            <div>
+              <h2>異動收退費</h2>
+              <p class="muted">同一頁核對學生、課程、加入/退出、收款與退費；正式金額仍寫入同一套收款流水與退費紀錄。</p>
+            </div>
+          </div>
+          <form class="form-grid compact-form" id="cleanMovementForm">
+            <label>
+              <span>學生</span>
+              <select name="studentId" id="cleanMovementStudent"></select>
+            </label>
+            <label>
+              <span>課程</span>
+              <select name="courseId" id="cleanMovementCourse"></select>
+            </label>
+            <label>
+              <span>異動日期</span>
+              <input name="date" type="date" required>
+            </label>
+            <label>
+              <span>異動</span>
+              <select name="action">
+                <option value="加入">加入</option>
+                <option value="退出">退出</option>
+              </select>
+            </label>
+            <label>
+              <span>報名 / 退班類型</span>
+              <select name="eventType">
+                <option value="整期報名">整期報名</option>
+                <option value="中途插入">中途插入</option>
+                <option value="中途退費">中途退費</option>
+                <option value="整期退掉">整期退掉</option>
+              </select>
+            </label>
+            <label>
+              <span>從第幾堂</span>
+              <input name="sessionNo" inputmode="numeric" placeholder="例：7">
+            </label>
+            <label class="wide">
+              <span>備註</span>
+              <input name="note" autocomplete="off">
+            </label>
+            <div class="actions wide">
+              <button class="primary" type="submit">記入異動</button>
+              <button class="ghost" id="openLegacyAccounting" type="button">打開收款 / 退費工具</button>
+            </div>
+          </form>
+          <section class="import-summary" id="cleanMovementSummary"></section>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>學生</th>
+                  <th>課程</th>
+                  <th>類型</th>
+                  <th>堂次</th>
+                  <th>金額 / 狀態</th>
+                  <th>備註</th>
+                </tr>
+              </thead>
+              <tbody id="cleanMovementRows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="panel" data-panel="teacher-payroll-ledger">
+        <section class="section-block clean-workspace">
+          <div class="section-heading">
+            <div>
+              <h2>老師薪資表</h2>
+              <p class="muted">月底最後一步：選月份與老師，核對堂次、人數變化與目前可輸出的薪資表。</p>
+            </div>
+            <button class="ghost" id="openLegacyPayroll" type="button">打開薪資計算工具</button>
+          </div>
+          <div class="matrix-filter-bar">
+            <div class="matrix-filter-title">薪資篩選</div>
+            <div class="filter-grid">
+              <label>
+                <span>月份</span>
+                <input id="cleanPayrollMonth" type="month">
+              </label>
+              <label>
+                <span>老師</span>
+                <select id="cleanPayrollTeacher"></select>
+              </label>
+            </div>
+          </div>
+          <section class="import-summary" id="cleanPayrollSummary"></section>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>老師</th>
+                  <th>課程</th>
+                  <th>堂數</th>
+                  <th>人數變化</th>
+                  <th>計算方式</th>
+                  <th>小計</th>
+                </tr>
+              </thead>
+              <tbody id="cleanPayrollRows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
 
       <section class="panel" data-panel="events">
         <form class="form-grid" id="eventForm">
@@ -448,7 +673,7 @@
         </div>
       </section>
 
-      <section class="panel is-active" data-panel="students">
+      <section class="panel" data-panel="students">
         <div class="record-toolbar">
           <button class="ghost" id="exportStudentFilterCsv" type="button">匯出目前學生名單 CSV</button>
           <button class="ghost" id="exportClassRosterCsv" type="button">匯出目前班級名單 CSV</button>

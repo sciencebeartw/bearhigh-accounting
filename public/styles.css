@@ -855,6 +855,22 @@ tr[data-open-payroll-block] {
   margin-top: 24px;
 }
 
+.clean-workspace {
+  margin-top: 0;
+}
+
+.clean-split {
+  align-items: start;
+}
+
+.clean-workspace .detail-panel h4 {
+  margin: 18px 0 8px;
+}
+
+.clean-workspace .notice-line {
+  margin-top: 12px;
+}
+
 .section-heading {
   align-items: end;
   display: flex;

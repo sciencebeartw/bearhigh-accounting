@@ -41,6 +41,8 @@ let currentUser = null;
 let selectedStudentId = null;
 let selectedMasterCourseId = '';
 let selectedMasterTeacherId = '';
+let selectedCleanStudentId = '';
+let selectedCleanTeacherCourseId = '';
 let masterImportPreview = null;
 let payrollPreview = null;
 let payrollSettlement = null;
@@ -83,6 +85,28 @@ const elements = {
   loginGateStatus: document.querySelector('#loginGateStatus'),
   tabs: document.querySelectorAll('.tab'),
   panels: document.querySelectorAll('.panel'),
+  cleanMovementCourse: document.querySelector('#cleanMovementCourse'),
+  cleanMovementForm: document.querySelector('#cleanMovementForm'),
+  cleanMovementRows: document.querySelector('#cleanMovementRows'),
+  cleanMovementStudent: document.querySelector('#cleanMovementStudent'),
+  cleanMovementSummary: document.querySelector('#cleanMovementSummary'),
+  cleanPayrollMonth: document.querySelector('#cleanPayrollMonth'),
+  cleanPayrollRows: document.querySelector('#cleanPayrollRows'),
+  cleanPayrollSummary: document.querySelector('#cleanPayrollSummary'),
+  cleanPayrollTeacher: document.querySelector('#cleanPayrollTeacher'),
+  cleanStudentCourseFilter: document.querySelector('#cleanStudentCourseFilter'),
+  cleanStudentCourseRows: document.querySelector('#cleanStudentCourseRows'),
+  cleanStudentDetail: document.querySelector('#cleanStudentDetail'),
+  cleanStudentGradeFilter: document.querySelector('#cleanStudentGradeFilter'),
+  cleanStudentSearch: document.querySelector('#cleanStudentSearch'),
+  cleanStudentSelect: document.querySelector('#cleanStudentSelect'),
+  cleanStudentSummary: document.querySelector('#cleanStudentSummary'),
+  cleanTeacherCourseDetail: document.querySelector('#cleanTeacherCourseDetail'),
+  cleanTeacherCourseRows: document.querySelector('#cleanTeacherCourseRows'),
+  cleanTeacherSearch: document.querySelector('#cleanTeacherSearch'),
+  cleanTeacherSelect: document.querySelector('#cleanTeacherSelect'),
+  cleanTeacherSummary: document.querySelector('#cleanTeacherSummary'),
+  cleanTeacherTermFilter: document.querySelector('#cleanTeacherTermFilter'),
   tuitionForm: document.querySelector('#tuitionForm'),
   eventForm: document.querySelector('#eventForm'),
   payrollForm: document.querySelector('#payrollForm'),
@@ -1004,6 +1028,490 @@ function masterTeacherRowsData() {
     rows.set(id, row);
   }
   return Array.from(rows.values());
+}
+
+const cohortGradeLabels = new Map([
+  ['112', '112（目前升高一）'],
+  ['111', '111（目前高一）'],
+  ['110', '110（目前高二）'],
+  ['109', '109（目前高三）'],
+  ['108', '108（已畢業）']
+]);
+
+function studentCohortCode(student) {
+  const text = `${student?.sheet || ''} ${student?.profile?.grade || ''} ${student?.profile?.note || ''}`;
+  const match = text.match(/\b(10[8-9]|11[0-2])\b/);
+  return match?.[1] || student?.sheet || '';
+}
+
+function studentCohortLabel(student) {
+  const code = studentCohortCode(student);
+  return cohortGradeLabels.get(code) || code || '未分年級';
+}
+
+function cleanStudentSearchText(student) {
+  const { tuitionByStudent } = buildStudentIndexes();
+  return studentSearchText(student, tuitionByStudent.get(student.id) || []);
+}
+
+function cleanFilteredStudents() {
+  const grade = elements.cleanStudentGradeFilter?.value || '';
+  const keyword = normalizedCompareText(elements.cleanStudentSearch?.value || '');
+  return getStudents()
+    .filter((student) => !grade || studentCohortCode(student) === grade || student.sheet === grade)
+    .filter((student) => !keyword || normalizedCompareText(cleanStudentSearchText(student)).includes(keyword))
+    .sort((a, b) => `${studentCohortCode(a)} ${studentName(a)} ${a.row}`.localeCompare(`${studentCohortCode(b)} ${studentName(b)} ${b.row}`, 'zh-Hant'));
+}
+
+function receivableForEnrollment(enrollmentId) {
+  return (state.receivables || []).find((receivable) => receivable.enrollmentId === enrollmentId) || null;
+}
+
+function studentCourseWithdrawalInfo(student, courseName, receivable = null) {
+  if (receivable?.withdrawal) {
+    const withdrawal = receivable.withdrawal;
+    return {
+      label: `${withdrawal.date || ''} 第 ${withdrawal.withdrawSessionNo || ''} 堂退；已上 ${formatMoney(withdrawal.sessionsTaken)} 堂；退 ${formatMoney(withdrawal.refundAmount)}`,
+      amount: parseNumber(withdrawal.refundAmount),
+      date: withdrawal.date || ''
+    };
+  }
+  const name = studentName(student);
+  const event = (state.membershipEvents || []).find((row) => (
+    row.action === '退出' &&
+    (row.studentId === student.id || (!row.studentId && row.studentName === name)) &&
+    eventMatchesCourseName(row, courseName)
+  ));
+  if (!event) return null;
+  return {
+    label: `${event.date || ''} ${event.sessionNo ? `第 ${event.sessionNo} 堂` : ''}退出${event.note ? `；${event.note}` : ''}`,
+    amount: 0,
+    date: event.date || ''
+  };
+}
+
+function inferStandardTuition(amount) {
+  const value = Math.round(parseNumber(amount));
+  if (value <= 0) return 0;
+  if (value >= 18000) return 21600;
+  if (value >= 14000) return 16800;
+  return value;
+}
+
+function buildStudentCourseFinanceRows(student) {
+  if (!student) return [];
+  const tuitionEntries = buildStudentIndexes().tuitionByStudent.get(student.id) || [];
+  const rows = [];
+  for (const course of normalizedCourseEntriesForStudent(student)) {
+    const fee = courseTuitionForStudent(student, courseKey(course), tuitionEntries);
+    const amount = Math.round(parseNumber(fee?.amount));
+    const standard = inferStandardTuition(amount);
+    rows.push({
+      id: `imported:${student.id}:${courseKey(course)}`,
+      source: 'import',
+      term: course.term || inferTermLabel(course.group, student.sheet),
+      cohort: student.sheet || '',
+      courseName: course.header || course.label,
+      courseLabel: course.label || courseLabel(course),
+      teacherName: importedTeacherNameForCourse(course.header, course.term, student.sheet),
+      amount,
+      originalAmount: standard,
+      paidAmount: 0,
+      balance: 0,
+      paymentLabel: amount > 0 ? studentEffectivePaymentState(student.id, tuitionEntries).label : '未對到科目收費',
+      status: '匯入底稿',
+      note: fee?.label || '',
+      withdrawal: studentCourseWithdrawalInfo(student, course.header || course.label)
+    });
+  }
+
+  const courses = manualCoursesById();
+  for (const enrollment of manualEnrollmentsByStudent().get(student.id) || []) {
+    const course = courses.get(enrollment.courseId);
+    const receivable = receivableForEnrollment(enrollment.id);
+    const amount = Math.round(parseNumber(receivable?.amount ?? enrollment.tuitionAmount));
+    rows.push({
+      id: `manual:${enrollment.id}`,
+      source: 'manual',
+      term: course?.term || '',
+      cohort: course?.cohort || student.sheet || '',
+      courseName: course?.courseName || enrollment.courseName || '',
+      courseLabel: course ? manualCourseLabel(course) : enrollment.courseName || enrollment.courseId,
+      teacherName: course?.teacherName || '',
+      amount,
+      originalAmount: Math.round(parseNumber(receivable?.originalAmount ?? enrollment.originalAmount ?? enrollment.tuitionAmount)),
+      discountAmount: Math.round(parseNumber(receivable?.discountAmount ?? enrollment.discountAmount)),
+      paidAmount: Math.round(parseNumber(receivable?.paidAmount)),
+      balance: Math.round(parseNumber(receivable?.balance)),
+      paymentLabel: receivableStatusLabel(receivable?.status) || (enrollment.paymentDate ? '有繳費日期' : '未收'),
+      status: enrollment.status || receivable?.status || 'active',
+      note: [enrollment.note, receivable?.note].filter(Boolean).join('；'),
+      withdrawal: studentCourseWithdrawalInfo(student, course?.courseName || enrollment.courseName, receivable),
+      receivable
+    });
+  }
+
+  const termGroups = new Map();
+  for (const row of rows) {
+    if (!row.term || row.amount <= 0) continue;
+    const groupRows = termGroups.get(row.term) || [];
+    groupRows.push(row);
+    termGroups.set(row.term, groupRows);
+  }
+  for (const groupRows of termGroups.values()) {
+    const billableRows = groupRows.filter((row) => row.amount > 0);
+    if (billableRows.length < 2) continue;
+    for (const row of billableRows) {
+      const standard = inferStandardTuition(row.amount);
+      const discount = Math.max(0, standard - row.amount);
+      row.packageNote = discount
+        ? `同學期 ${billableRows.length} 科，疑似合報；每科約優惠 ${formatMoney(discount)}`
+        : `同學期 ${billableRows.length} 科，需核對是否另有合報優惠欄`;
+    }
+  }
+
+  return rows.sort((a, b) => `${a.term} ${a.courseName}`.localeCompare(`${b.term} ${b.courseName}`, 'zh-Hant'));
+}
+
+function cleanSelectedStudent() {
+  const students = getStudents();
+  if (selectedCleanStudentId && students.some((student) => student.id === selectedCleanStudentId)) {
+    return students.find((student) => student.id === selectedCleanStudentId);
+  }
+  const filtered = cleanFilteredStudents();
+  selectedCleanStudentId = filtered[0]?.id || '';
+  return filtered[0] || null;
+}
+
+function renderCleanStudentLedger() {
+  if (!elements.cleanStudentSelect) return;
+  const gradeOptions = Array.from(new Map(getStudents().map((student) => [studentCohortCode(student), studentCohortLabel(student)])).entries())
+    .filter(([value]) => value)
+    .sort((a, b) => a[0].localeCompare(b[0], 'zh-Hant'));
+  const selectedGrade = elements.cleanStudentGradeFilter.value;
+  elements.cleanStudentGradeFilter.innerHTML = '<option value="">全部</option>' +
+    gradeOptions.map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`).join('');
+  elements.cleanStudentGradeFilter.value = gradeOptions.some(([value]) => value === selectedGrade) ? selectedGrade : '';
+
+  const students = cleanFilteredStudents();
+  if (selectedCleanStudentId && !students.some((student) => student.id === selectedCleanStudentId)) {
+    selectedCleanStudentId = students[0]?.id || '';
+  }
+  const selectedStudent = cleanSelectedStudent();
+  elements.cleanStudentSelect.innerHTML = students.length
+    ? students.map((student) => `<option value="${escapeHtml(student.id)}">${escapeHtml(studentName(student))}｜${escapeHtml(studentCohortLabel(student))}｜${escapeHtml(studentSchool(student) || '未填學校')}</option>`).join('')
+    : '<option value="">沒有符合的學生</option>';
+  elements.cleanStudentSelect.value = selectedStudent?.id || '';
+  elements.cleanStudentSelect.disabled = !students.length;
+
+  const courseRows = buildStudentCourseFinanceRows(selectedStudent);
+  const selectedCourse = elements.cleanStudentCourseFilter.value;
+  const courseOptions = Array.from(new Map(courseRows.map((row) => [row.courseName, row.courseName])).entries())
+    .sort((a, b) => a[1].localeCompare(b[1], 'zh-Hant'));
+  elements.cleanStudentCourseFilter.innerHTML = '<option value="">全部課程</option>' +
+    courseOptions.map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`).join('');
+  elements.cleanStudentCourseFilter.value = courseOptions.some(([value]) => value === selectedCourse) ? selectedCourse : '';
+  const visibleRows = courseRows.filter((row) => !elements.cleanStudentCourseFilter.value || row.courseName === elements.cleanStudentCourseFilter.value);
+  const amountTotal = visibleRows.reduce((sum, row) => sum + parseNumber(row.amount), 0);
+  const paidTotal = visibleRows.reduce((sum, row) => sum + parseNumber(row.paidAmount), 0);
+  const refundTotal = visibleRows.reduce((sum, row) => sum + parseNumber(row.withdrawal?.amount), 0);
+  elements.cleanStudentSummary.innerHTML = selectedStudent
+    ? [
+      summaryCell('篩選學生', students.length),
+      summaryCell('修課筆數', visibleRows.length),
+      summaryCell('應收 / 學收', amountTotal),
+      summaryCell('已收', paidTotal),
+      summaryCell('退費紀錄', refundTotal)
+    ].join('')
+    : '<div class="record-item"><p>尚未載入學生資料。</p></div>';
+  elements.cleanStudentCourseRows.innerHTML = visibleRows.length
+    ? visibleRows.map((row) => {
+      const discountText = [
+        row.packageNote,
+        row.discountAmount ? `手動優惠 ${formatMoney(row.discountAmount)}` : ''
+      ].filter(Boolean).join('；') || '無';
+      const paymentText = [
+        row.paidAmount ? `已收 ${formatMoney(row.paidAmount)}` : '',
+        row.balance ? `未收 ${formatMoney(row.balance)}` : '',
+        row.withdrawal ? row.withdrawal.label : ''
+      ].filter(Boolean).join('<br>') || row.paymentLabel || '';
+      return `
+        <tr>
+          <td>${escapeHtml(row.term || '未分學期')}<br><span class="muted">${escapeHtml(row.cohort || '')}</span></td>
+          <td><strong>${escapeHtml(row.courseName || '')}</strong><br><span class="muted">${escapeHtml(row.courseLabel || '')}</span></td>
+          <td>${escapeHtml(row.teacherName || '未指定')}</td>
+          <td class="money">${row.amount ? formatMoney(row.amount) : '未對到'}${row.originalAmount ? `<br><span class="muted">原 ${formatMoney(row.originalAmount)}</span>` : ''}</td>
+          <td>${escapeHtml(discountText)}</td>
+          <td>${paymentText}</td>
+          <td>${escapeHtml(row.status || '')}</td>
+        </tr>
+      `;
+    }).join('')
+    : emptyRow(7);
+  if (!selectedStudent) {
+    elements.cleanStudentDetail.innerHTML = '<p class="empty">尚未載入學生資料</p>';
+    return;
+  }
+  const profile = selectedStudent.profile || {};
+  const events = (state.membershipEvents || []).filter((event) => (
+    event.studentId === selectedStudent.id || (!event.studentId && event.studentName === studentName(selectedStudent))
+  ));
+  elements.cleanStudentDetail.innerHTML = `
+    <div class="detail-header">
+      <div>
+        <p class="eyebrow">${escapeHtml(studentCohortLabel(selectedStudent))} · ${escapeHtml(selectedStudent.sheet || '')} 列 ${escapeHtml(selectedStudent.row || '')}</p>
+        <h2>${escapeHtml(studentName(selectedStudent) || '未命名學生')}</h2>
+      </div>
+      <button class="ghost" type="button" data-clean-fill-student="${escapeHtml(selectedStudent.id)}">帶到異動收退費</button>
+    </div>
+    <div class="profile-grid">
+      <div><span>高中 / 學校</span><strong>${escapeHtml(profile.highSchool || '')}</strong></div>
+      <div><span>國中</span><strong>${escapeHtml(profile.juniorHigh || '')}</strong></div>
+      <div><span>年級文字</span><strong>${escapeHtml(profile.grade || '')}</strong></div>
+      <div><span>狀態</span><strong>${escapeHtml(studentStatusLabel(selectedStudent.id))}</strong></div>
+      <div><span>母手機</span><strong>${escapeHtml(profile.motherPhone || '')}</strong></div>
+      <div><span>父手機</span><strong>${escapeHtml(profile.fatherPhone || '')}</strong></div>
+    </div>
+    <h4>學期修課摘要</h4>
+    <div class="mini-record-list">
+      ${courseRows.length ? courseRows.map((row) => `<div>${escapeHtml(row.term || '未分學期')}｜${escapeHtml(row.courseName)}｜${formatMoney(row.amount)}${row.packageNote ? `｜${escapeHtml(row.packageNote)}` : ''}</div>`).join('') : '<div class="muted">尚無修課資料。</div>'}
+    </div>
+    <h4>異動紀錄</h4>
+    <div class="mini-record-list">
+      ${events.length ? events.map((event) => `<div>${escapeHtml(event.date || '')}｜${escapeHtml(event.courseName || '')}｜${escapeHtml(event.action || '')}${event.sessionNo ? ` 第 ${escapeHtml(event.sessionNo)} 堂` : ''}${event.note ? `｜${escapeHtml(event.note)}` : ''}</div>`).join('') : '<div class="muted">尚無異動。</div>'}
+    </div>
+  `;
+}
+
+function cleanTeacherRows() {
+  const masterRows = masterTeacherRowsData().filter((teacher) => !teacher.archived);
+  if (masterRows.length) return masterRows;
+  const blocksByTeacher = new Map();
+  for (const block of getTeacherRosterBlocks()) {
+    const teacherName = block.teacherSheet || '未指定老師';
+    const row = blocksByTeacher.get(teacherName) || {
+      id: stableMasterId('fallback_teacher', [teacherName]),
+      name: teacherName,
+      subject: canonicalSubject(teacherName),
+      courseCount: 0,
+      enrollmentCount: 0,
+      feeTotal: 0,
+      courses: []
+    };
+    row.courseCount += 1;
+    row.enrollmentCount += block.rowCount || 0;
+    row.courses.push({
+      id: block.key,
+      term: inferTermLabel(block.title, block.sheet),
+      cohort: block.sheet || '',
+      courseName: block.title || '',
+      teacherName,
+      sessionCount: 24,
+      enrollmentCount: block.rowCount || 0,
+      feeTotal: 0,
+      enrollments: (block.rows || []).map((blockRow) => ({
+        id: `${block.key}:${blockRow.row}`,
+        studentName: blockRow.fields?.['姓名'] || '',
+        tuitionAmount: parseNumber(blockRow.fields?.['單堂']) * 24,
+        source: 'teacherRoster'
+      }))
+    });
+    blocksByTeacher.set(teacherName, row);
+  }
+  return Array.from(blocksByTeacher.values());
+}
+
+function renderCleanTeacherLedger() {
+  if (!elements.cleanTeacherSelect) return;
+  const keyword = normalizedCompareText(elements.cleanTeacherSearch.value || '');
+  const selectedTerm = elements.cleanTeacherTermFilter.value || '';
+  const allTeachers = cleanTeacherRows();
+  const terms = Array.from(new Set(allTeachers.flatMap((teacher) => (teacher.courses || []).map((course) => course.term).filter(Boolean))))
+    .sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+  elements.cleanTeacherTermFilter.innerHTML = '<option value="">全部</option>' +
+    terms.map((term) => `<option value="${escapeHtml(term)}">${escapeHtml(term)}</option>`).join('');
+  elements.cleanTeacherTermFilter.value = terms.includes(selectedTerm) ? selectedTerm : '';
+  const teachers = allTeachers
+    .filter((teacher) => {
+      const text = normalizedCompareText([teacher.name, teacher.subject, ...(teacher.courses || []).map((course) => course.courseName)].join(' '));
+      return !keyword || text.includes(keyword);
+    })
+    .filter((teacher) => !elements.cleanTeacherTermFilter.value || (teacher.courses || []).some((course) => course.term === elements.cleanTeacherTermFilter.value))
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+  if (selectedMasterTeacherId && !teachers.some((teacher) => teacher.id === selectedMasterTeacherId)) {
+    selectedMasterTeacherId = '';
+  }
+  const selectedTeacher = teachers.find((teacher) => teacher.id === selectedMasterTeacherId) || teachers[0] || null;
+  selectedMasterTeacherId = selectedTeacher?.id || '';
+  elements.cleanTeacherSelect.innerHTML = teachers.length
+    ? teachers.map((teacher) => `<option value="${escapeHtml(teacher.id)}">${escapeHtml(teacher.name)}｜${formatMoney(teacher.courseCount)} 門課</option>`).join('')
+    : '<option value="">沒有符合的老師</option>';
+  elements.cleanTeacherSelect.value = selectedMasterTeacherId;
+  elements.cleanTeacherSelect.disabled = !teachers.length;
+  const courses = (selectedTeacher?.courses || [])
+    .filter((course) => !elements.cleanTeacherTermFilter.value || course.term === elements.cleanTeacherTermFilter.value)
+    .sort((a, b) => `${a.term} ${a.courseName}`.localeCompare(`${b.term} ${b.courseName}`, 'zh-Hant'));
+  const selectedCourse = courses.find((course) => course.id === selectedCleanTeacherCourseId) || courses[0] || null;
+  selectedCleanTeacherCourseId = selectedCourse?.id || '';
+  const feeTotal = courses.reduce((sum, course) => sum + parseNumber(course.feeTotal), 0);
+  elements.cleanTeacherSummary.innerHTML = selectedTeacher
+    ? [
+      summaryCell('老師課程', courses.length),
+      summaryCell('學生人次', courses.reduce((sum, course) => sum + parseNumber(course.enrollmentCount), 0)),
+      summaryCell('收費合計', feeTotal),
+      summaryCell('平均每課', courses.length ? Math.round(feeTotal / courses.length) : 0)
+    ].join('')
+    : '<div class="record-item"><p>尚未載入老師或課程資料。</p></div>';
+  elements.cleanTeacherCourseRows.innerHTML = courses.length
+    ? courses.map((course) => {
+      const averagePerSession = course.sessionCount && course.enrollmentCount
+        ? Math.round(parseNumber(course.feeTotal) / parseNumber(course.sessionCount) / parseNumber(course.enrollmentCount))
+        : 0;
+      return `
+        <tr class="${course.id === selectedCleanTeacherCourseId ? 'is-selected' : ''}">
+          <td>${escapeHtml(course.term || '未分學期')}</td>
+          <td><strong>${escapeHtml(course.courseName || '')}</strong><br><span class="muted">${escapeHtml(course.cohort || '')}</span></td>
+          <td class="money">${formatMoney(course.enrollmentCount)}</td>
+          <td class="money">${formatMoney(parseNumber(course.sessionCount) || 24)}</td>
+          <td class="money">${averagePerSession ? formatMoney(averagePerSession) : ''}</td>
+          <td class="money">${formatMoney(course.feeTotal)}</td>
+          <td><button class="ghost small" type="button" data-clean-view-teacher-course="${escapeHtml(course.id)}">名單</button></td>
+        </tr>
+      `;
+    }).join('')
+    : emptyRow(7);
+  renderCleanTeacherCourseDetail(selectedCourse);
+}
+
+function renderCleanTeacherCourseDetail(course) {
+  if (!elements.cleanTeacherCourseDetail) return;
+  if (!course) {
+    elements.cleanTeacherCourseDetail.innerHTML = '<p class="empty">選一門課查看名單</p>';
+    return;
+  }
+  const { studentsById } = buildStudentIndexes();
+  const receivableMap = new Map((state.receivables || []).map((receivable) => [receivable.enrollmentId, receivable]));
+  const studentRows = (course.enrollments || []).map((enrollment) => {
+    const student = studentsById.get(enrollment.studentId);
+    const receivable = receivableMap.get(enrollment.id);
+    const amount = parseNumber(receivable?.amount ?? enrollment.tuitionAmount);
+    const withdrawal = student ? studentCourseWithdrawalInfo(student, course.courseName, receivable) : null;
+    return `
+      <tr>
+        <td><strong>${escapeHtml(enrollment.studentName || studentName(student) || '')}</strong></td>
+        <td>${escapeHtml(studentSchool(student))}</td>
+        <td class="money">${formatMoney(amount)}</td>
+        <td class="money">${formatMoney(Math.round(amount / (parseNumber(course.sessionCount) || 24)))}</td>
+        <td>${escapeHtml(withdrawal?.label || receivableStatusLabel(receivable?.status) || enrollment.status || '')}</td>
+      </tr>
+    `;
+  }).join('');
+  elements.cleanTeacherCourseDetail.innerHTML = `
+    <h3>${escapeHtml(course.courseName || '')}</h3>
+    <p class="muted">${escapeHtml([course.term, course.cohort, course.teacherName].filter(Boolean).join(' / '))}</p>
+    <div class="profile-grid">
+      <div><strong>${formatMoney(course.enrollmentCount)}</strong><span>目前名單</span></div>
+      <div><strong>${formatMoney(course.feeTotal)}</strong><span>收費合計</span></div>
+      <div><strong>${formatMoney(parseNumber(course.sessionCount) || 24)}</strong><span>總堂數</span></div>
+      <div><strong>${formatMoney(parseNumber(course.refundUnitPrice) || 1000)}</strong><span>退班單堂</span></div>
+    </div>
+    <h4>學生名單 / 每堂收入參考</h4>
+    <div class="table-wrap embedded-table">
+      <table>
+        <thead><tr><th>學生</th><th>學校</th><th>科目收入</th><th>每堂平均</th><th>狀態</th></tr></thead>
+        <tbody>${studentRows || emptyRow(5)}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderCleanMovementLedger() {
+  if (!elements.cleanMovementRows) return;
+  const students = getStudents().slice().sort((a, b) => `${studentName(a)} ${a.sheet}`.localeCompare(`${studentName(b)} ${b.sheet}`, 'zh-Hant'));
+  const selectedStudent = elements.cleanMovementStudent.value;
+  elements.cleanMovementStudent.innerHTML = students.length
+    ? students.map((student) => `<option value="${escapeHtml(student.id)}">${escapeHtml(studentName(student))}｜${escapeHtml(studentCohortLabel(student))}｜${escapeHtml(studentSchool(student) || '')}</option>`).join('')
+    : '<option value="">尚無學生</option>';
+  elements.cleanMovementStudent.value = students.some((student) => student.id === selectedStudent) ? selectedStudent : (selectedCleanStudentId || students[0]?.id || '');
+  const student = students.find((row) => row.id === elements.cleanMovementStudent.value) || null;
+  const courseRows = buildStudentCourseFinanceRows(student);
+  const courseOptions = courseRows.map((row) => `<option value="${escapeHtml(row.courseName)}">${escapeHtml(row.term || '未分學期')}｜${escapeHtml(row.courseName)}</option>`).join('');
+  elements.cleanMovementCourse.innerHTML = courseOptions || '<option value="">這位學生尚無課程</option>';
+
+  const moneyRows = (state.paymentLedger || []).map((payment) => ({
+    date: payment.date || payment.createdAt?.slice(0, 10) || '',
+    studentName: payment.studentName || '',
+    studentId: payment.studentId || '',
+    courseName: payment.courseName || '',
+    type: payment.amount < 0 ? '退費' : '收款',
+    sessionNo: '',
+    amountText: formatMoney(payment.amount),
+    note: payment.note || ''
+  }));
+  const eventRows = (state.membershipEvents || []).map((event) => ({
+    date: event.date || event.createdAt?.slice(0, 10) || '',
+    studentName: event.studentName || '',
+    studentId: event.studentId || '',
+    courseName: event.courseName || '',
+    type: event.action || '異動',
+    sessionNo: event.sessionNo || '',
+    amountText: '',
+    note: event.note || ''
+  }));
+  const rows = [...eventRows, ...moneyRows]
+    .sort((a, b) => `${b.date} ${b.type}`.localeCompare(`${a.date} ${a.type}`, 'zh-Hant'));
+  elements.cleanMovementSummary.innerHTML = [
+    summaryCell('異動紀錄', state.membershipEvents.length),
+    summaryCell('收款 / 退費流水', state.paymentLedger.length),
+    summaryCell('退費筆數', state.paymentLedger.filter((payment) => parseNumber(payment.amount) < 0).length),
+    summaryCell('退出紀錄', state.membershipEvents.filter((event) => event.action === '退出').length)
+  ].join('');
+  elements.cleanMovementRows.innerHTML = rows.length
+    ? rows.slice(0, 180).map((row) => `
+      <tr>
+        <td>${escapeHtml(row.date)}</td>
+        <td><strong>${escapeHtml(row.studentName)}</strong></td>
+        <td>${escapeHtml(row.courseName)}</td>
+        <td>${escapeHtml(row.type)}</td>
+        <td>${escapeHtml(row.sessionNo ? `第 ${row.sessionNo} 堂` : '')}</td>
+        <td class="money">${escapeHtml(row.amountText)}</td>
+        <td>${escapeHtml(row.note)}</td>
+      </tr>
+    `).join('')
+    : emptyRow(7);
+}
+
+function renderCleanPayrollLedger() {
+  if (!elements.cleanPayrollRows) return;
+  const month = elements.cleanPayrollMonth.value || elements.payrollSettlementMonth.value || currentMonthIso();
+  const teachers = cleanTeacherRows().map((teacher) => teacher.name).filter(Boolean).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+  const selected = elements.cleanPayrollTeacher.value;
+  elements.cleanPayrollTeacher.innerHTML = '<option value="">全部老師</option>' +
+    teachers.map((teacher) => `<option value="${escapeHtml(teacher)}">${escapeHtml(teacher)}</option>`).join('');
+  elements.cleanPayrollTeacher.value = teachers.includes(selected) ? selected : '';
+  const settlementRows = payrollSettlement?.classes || [];
+  const archive = (state.payrollSettlements || []).find((settlement) => settlement.month === month);
+  const rows = settlementRows.length ? settlementRows : (archive?.classes || []);
+  const visibleRows = rows.filter((row) => !elements.cleanPayrollTeacher.value || row.teacherName === elements.cleanPayrollTeacher.value);
+  const visibleTeacherCount = new Set(visibleRows.map((row) => row.teacherName).filter(Boolean)).size;
+  elements.cleanPayrollSummary.innerHTML = [
+    summaryCell(`${month} 老師數`, visibleTeacherCount),
+    summaryCell('課程列', visibleRows.length),
+    summaryCell('堂數 / 時數', visibleRows.reduce((sum, row) => sum + parseNumber(row.sessionCount || row.hours), 0)),
+    summaryCell('薪資小計', visibleRows.reduce((sum, row) => sum + parseNumber(row.total), 0))
+  ].join('') + (!rows.length ? '<div class="notice-line">尚未產生這個月份的薪資結算；請按右上角打開薪資計算工具，先補堂次與產生月底結算。</div>' : '');
+  elements.cleanPayrollRows.innerHTML = visibleRows.length
+    ? visibleRows.map((row) => `
+      <tr>
+        <td><strong>${escapeHtml(row.teacherName || '')}</strong></td>
+        <td>${escapeHtml(row.courseName || row.className || '')}</td>
+        <td class="money">${formatMoney(row.sessionCount || row.hours || 0)}</td>
+        <td>${escapeHtml(row.headcountText || row.peopleText || row.studentCount || '')}</td>
+        <td>${escapeHtml(row.methodLabel || row.ruleLabel || row.calcMethod || row.status || '')}</td>
+        <td class="money">${formatMoney(row.total)}</td>
+      </tr>
+    `).join('')
+    : emptyRow(6);
 }
 
 function masterCourseMatchesFilters(course) {
@@ -4306,6 +4814,10 @@ function renderImport() {
 }
 
 function renderAll() {
+  renderCleanStudentLedger();
+  renderCleanTeacherLedger();
+  renderCleanMovementLedger();
+  renderCleanPayrollLedger();
   renderAllocationPreview();
   renderEvents();
   renderPayroll();
@@ -4361,6 +4873,87 @@ function toCsv(rows) {
 
 elements.tabs.forEach((tab) => {
   tab.addEventListener('click', () => setActiveTab(tab.dataset.tab));
+});
+
+[
+  elements.cleanStudentGradeFilter,
+  elements.cleanStudentSearch,
+  elements.cleanStudentCourseFilter
+].forEach((element) => {
+  element?.addEventListener('input', renderCleanStudentLedger);
+  element?.addEventListener('change', renderCleanStudentLedger);
+});
+
+elements.cleanStudentSelect?.addEventListener('change', () => {
+  selectedCleanStudentId = elements.cleanStudentSelect.value;
+  renderCleanStudentLedger();
+});
+
+elements.cleanStudentDetail?.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-clean-fill-student]');
+  if (!button) return;
+  selectedCleanStudentId = button.dataset.cleanFillStudent;
+  renderCleanMovementLedger();
+  setActiveTab('movement-ledger');
+});
+
+[
+  elements.cleanTeacherTermFilter,
+  elements.cleanTeacherSearch
+].forEach((element) => {
+  element?.addEventListener('input', renderCleanTeacherLedger);
+  element?.addEventListener('change', renderCleanTeacherLedger);
+});
+
+elements.cleanTeacherSelect?.addEventListener('change', () => {
+  selectedMasterTeacherId = elements.cleanTeacherSelect.value;
+  selectedCleanTeacherCourseId = '';
+  renderCleanTeacherLedger();
+});
+
+elements.cleanTeacherCourseRows?.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-clean-view-teacher-course]');
+  if (!button) return;
+  selectedCleanTeacherCourseId = button.dataset.cleanViewTeacherCourse;
+  renderCleanTeacherLedger();
+});
+
+elements.cleanMovementStudent?.addEventListener('change', renderCleanMovementLedger);
+
+elements.cleanMovementForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const data = Object.fromEntries(new FormData(elements.cleanMovementForm).entries());
+  const student = buildStudentIndexes().studentsById.get(data.studentId);
+  if (!student || !data.courseId || !data.date) return;
+  await addMembershipEvent({
+    courseName: data.courseId,
+    month: String(data.date).slice(0, 7),
+    date: data.date,
+    sessionNo: String(data.sessionNo || ''),
+    studentName: studentName(student),
+    studentId: student.id,
+    action: data.action || '加入',
+    note: [data.eventType, data.note].filter(Boolean).join('；')
+  });
+  selectedCleanStudentId = student.id;
+  elements.cleanMovementForm.reset();
+  renderAll();
+});
+
+document.querySelector('#openLegacyAccounting')?.addEventListener('click', () => {
+  setActiveTab('accounting');
+});
+
+document.querySelector('#openLegacyPayroll')?.addEventListener('click', () => {
+  setActiveTab('payroll');
+});
+
+[
+  elements.cleanPayrollMonth,
+  elements.cleanPayrollTeacher
+].forEach((element) => {
+  element?.addEventListener('input', renderCleanPayrollLedger);
+  element?.addEventListener('change', renderCleanPayrollLedger);
 });
 
 elements.tuitionForm?.addEventListener('input', renderAllocationPreview);
@@ -5829,6 +6422,7 @@ onAuthStateChanged(auth, (user) => {
 const initialMonth = currentMonthIso();
 if (!elements.payrollCalcMonth.value) elements.payrollCalcMonth.value = initialMonth;
 if (!elements.payrollSettlementMonth.value) elements.payrollSettlementMonth.value = elements.payrollCalcMonth.value || initialMonth;
+if (elements.cleanPayrollMonth && !elements.cleanPayrollMonth.value) elements.cleanPayrollMonth.value = elements.payrollSettlementMonth.value || initialMonth;
 
 renderOptions();
 renderAll();
