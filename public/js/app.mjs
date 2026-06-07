@@ -43,6 +43,7 @@ let selectedMasterCourseId = '';
 let selectedMasterTeacherId = '';
 let selectedCleanStudentId = '';
 let selectedCleanTeacherCourseId = '';
+let cleanStudentSelectionTouched = false;
 let masterImportPreview = null;
 let payrollPreview = null;
 let payrollSettlement = null;
@@ -1062,13 +1063,36 @@ function cleanStudentSearchText(student) {
   return studentSearchText(student, tuitionByStudent.get(student.id) || []);
 }
 
+function cleanStudentActualCourseCount(student, tuitionEntries = [], manualEnrollments = []) {
+  let count = 0;
+  for (const course of normalizedCourseEntriesForStudent(student)) {
+    const fee = courseTuitionForStudent(student, courseKey(course), tuitionEntries);
+    const amount = Math.round(parseNumber(fee?.amount));
+    if (amount > 0 || studentCourseWithdrawalInfo(student, course.header || course.label)) {
+      count += 1;
+    }
+  }
+  return count + manualEnrollments.filter((enrollment) => enrollment.status !== 'archived').length;
+}
+
 function cleanFilteredStudents() {
   const grade = elements.cleanStudentGradeFilter?.value || '';
   const keyword = normalizedCompareText(elements.cleanStudentSearch?.value || '');
+  const { tuitionByStudent } = buildStudentIndexes();
+  const enrollmentsByStudent = manualEnrollmentsByStudent();
   return getStudents()
     .filter((student) => !grade || studentCohortCode(student) === grade || student.sheet === grade)
     .filter((student) => !keyword || normalizedCompareText(cleanStudentSearchText(student)).includes(keyword))
-    .sort((a, b) => `${studentCohortCode(a)} ${studentName(a)} ${a.row}`.localeCompare(`${studentCohortCode(b)} ${studentName(b)} ${b.row}`, 'zh-Hant'));
+    .map((student) => ({
+      student,
+      courseCount: cleanStudentActualCourseCount(student, tuitionByStudent.get(student.id) || [], enrollmentsByStudent.get(student.id) || [])
+    }))
+    .sort((a, b) => (
+      (b.courseCount > 0) - (a.courseCount > 0) ||
+      b.courseCount - a.courseCount ||
+      `${studentCohortCode(a.student)} ${studentName(a.student)} ${a.student.row}`.localeCompare(`${studentCohortCode(b.student)} ${studentName(b.student)} ${b.student.row}`, 'zh-Hant')
+    ))
+    .map((row) => row.student);
 }
 
 function receivableForEnrollment(enrollmentId) {
@@ -1357,10 +1381,26 @@ function renderCleanStudentLedger() {
   const students = cleanFilteredStudents();
   if (selectedCleanStudentId && !students.some((student) => student.id === selectedCleanStudentId)) {
     selectedCleanStudentId = students[0]?.id || '';
+    cleanStudentSelectionTouched = false;
+  }
+  if (!cleanStudentSelectionTouched && selectedCleanStudentId && students[0]?.id && selectedCleanStudentId !== students[0].id) {
+    const { tuitionByStudent } = buildStudentIndexes();
+    const enrollmentsByStudent = manualEnrollmentsByStudent();
+    const selectedStudentForPriority = students.find((student) => student.id === selectedCleanStudentId);
+    const selectedCourseCount = cleanStudentActualCourseCount(selectedStudentForPriority, tuitionByStudent.get(selectedCleanStudentId) || [], enrollmentsByStudent.get(selectedCleanStudentId) || []);
+    const firstCourseCount = cleanStudentActualCourseCount(students[0], tuitionByStudent.get(students[0].id) || [], enrollmentsByStudent.get(students[0].id) || []);
+    if (selectedCourseCount <= 0 && firstCourseCount > 0) {
+      selectedCleanStudentId = students[0].id;
+    }
   }
   const selectedStudent = cleanSelectedStudent();
+  const { tuitionByStudent } = buildStudentIndexes();
+  const enrollmentsByStudent = manualEnrollmentsByStudent();
   elements.cleanStudentSelect.innerHTML = students.length
-    ? students.map((student) => `<option value="${escapeHtml(student.id)}">${escapeHtml(studentName(student))}｜${escapeHtml(studentCohortLabel(student))}｜${escapeHtml(studentSchool(student) || '未填學校')}</option>`).join('')
+    ? students.map((student) => {
+      const courseCount = cleanStudentActualCourseCount(student, tuitionByStudent.get(student.id) || [], enrollmentsByStudent.get(student.id) || []);
+      return `<option value="${escapeHtml(student.id)}">${escapeHtml(studentName(student))}｜${escapeHtml(studentCohortLabel(student))}｜${escapeHtml(studentSchool(student) || '未填學校')}${courseCount ? `｜${formatMoney(courseCount)} 科` : ''}</option>`;
+    }).join('')
     : '<option value="">沒有符合的學生</option>';
   elements.cleanStudentSelect.value = selectedStudent?.id || '';
   elements.cleanStudentSelect.disabled = !students.length;
@@ -5044,15 +5084,23 @@ elements.tabs.forEach((tab) => {
 
 [
   elements.cleanStudentGradeFilter,
-  elements.cleanStudentSearch,
-  elements.cleanStudentCourseFilter
+  elements.cleanStudentSearch
 ].forEach((element) => {
-  element?.addEventListener('input', renderCleanStudentLedger);
-  element?.addEventListener('change', renderCleanStudentLedger);
+  const refreshStudents = () => {
+    selectedCleanStudentId = '';
+    cleanStudentSelectionTouched = false;
+    renderCleanStudentLedger();
+  };
+  element?.addEventListener('input', refreshStudents);
+  element?.addEventListener('change', refreshStudents);
 });
+
+elements.cleanStudentCourseFilter?.addEventListener('input', renderCleanStudentLedger);
+elements.cleanStudentCourseFilter?.addEventListener('change', renderCleanStudentLedger);
 
 elements.cleanStudentSelect?.addEventListener('change', () => {
   selectedCleanStudentId = elements.cleanStudentSelect.value;
+  cleanStudentSelectionTouched = true;
   renderCleanStudentLedger();
 });
 
