@@ -94,15 +94,22 @@ const elements = {
   cleanPayrollRows: document.querySelector('#cleanPayrollRows'),
   cleanPayrollSummary: document.querySelector('#cleanPayrollSummary'),
   cleanPayrollTeacher: document.querySelector('#cleanPayrollTeacher'),
+  cleanStudentArchive: document.querySelector('#cleanStudentArchive'),
   cleanStudentCourseFilter: document.querySelector('#cleanStudentCourseFilter'),
   cleanStudentCourseRows: document.querySelector('#cleanStudentCourseRows'),
   cleanStudentDetail: document.querySelector('#cleanStudentDetail'),
+  cleanStudentForm: document.querySelector('#cleanStudentForm'),
+  cleanStudentFormCohort: document.querySelector('#cleanStudentFormCohort'),
   cleanStudentGradeFilter: document.querySelector('#cleanStudentGradeFilter'),
+  cleanStudentNew: document.querySelector('#cleanStudentNew'),
   cleanStudentSearch: document.querySelector('#cleanStudentSearch'),
   cleanStudentSelect: document.querySelector('#cleanStudentSelect'),
   cleanStudentSummary: document.querySelector('#cleanStudentSummary'),
+  cleanTeacherArchive: document.querySelector('#cleanTeacherArchive'),
   cleanTeacherCourseDetail: document.querySelector('#cleanTeacherCourseDetail'),
   cleanTeacherCourseRows: document.querySelector('#cleanTeacherCourseRows'),
+  cleanTeacherForm: document.querySelector('#cleanTeacherForm'),
+  cleanTeacherNew: document.querySelector('#cleanTeacherNew'),
   cleanTeacherSearch: document.querySelector('#cleanTeacherSearch'),
   cleanTeacherSelect: document.querySelector('#cleanTeacherSelect'),
   cleanTeacherSummary: document.querySelector('#cleanTeacherSummary'),
@@ -521,6 +528,7 @@ async function recordAudit(entityType, entityId, action, before, after, note = '
   if (state.auditLogs.length > 300) {
     state.auditLogs = state.auditLogs.slice(-300);
   }
+  saveState();
   try {
     await saveCloudRecord('auditLogs', record);
   } catch {
@@ -1098,6 +1106,60 @@ function inferStandardTuition(amount) {
   return value;
 }
 
+const packagePricingRules = [
+  { label: '新制單科早鳥 / 特價', count: 1, total: 21600, earlySingle: 21600, baseSingle: 24000 },
+  { label: '新制兩科合報', count: 2, total: 42200, earlySingle: 21600, baseSingle: 24000 },
+  { label: '新制三科合報', count: 3, total: 61800, earlySingle: 21600, baseSingle: 24000 },
+  { label: '新制四科合報', count: 4, total: 81400, earlySingle: 21600, baseSingle: 24000 },
+  { label: '舊制單科早鳥', count: 1, total: 16800, earlySingle: 16800, baseSingle: 21600 },
+  { label: '舊制兩科合報', count: 2, total: 32600, earlySingle: 16800, baseSingle: 21600 },
+  { label: '舊制三科合報', count: 3, total: 47400, earlySingle: 16800, baseSingle: 21600 },
+  { label: '舊制四科合報', count: 4, total: 62200, earlySingle: 16800, baseSingle: 21600 },
+  { label: '數自全科合報', minCount: 4, total: 77000, baseSingle: 24000 },
+  { label: '自然全科合報', minCount: 4, total: 52000, baseSingle: 24000 },
+  { label: '物化合報優惠', count: 2, total: 42000, baseSingle: 24000 },
+  { label: '生地全報優惠', count: 2, total: 12000, baseSingle: 8000 }
+];
+
+function matchingPackageRule(count, total) {
+  return packagePricingRules.find((rule) => (
+    (rule.count ? rule.count === count : count >= rule.minCount) &&
+    Math.abs(Math.round(parseNumber(total)) - rule.total) <= 4
+  )) || null;
+}
+
+function annotatePackageRows(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    if (!row.term || parseNumber(row.amount) <= 0) continue;
+    const groupRows = groups.get(row.term) || [];
+    groupRows.push(row);
+    groups.set(row.term, groupRows);
+  }
+  for (const groupRows of groups.values()) {
+    if (groupRows.length < 2) continue;
+    const total = groupRows.reduce((sum, row) => sum + parseNumber(row.amount), 0);
+    const rule = matchingPackageRule(groupRows.length, total);
+    if (rule) {
+      const average = Math.round(total / groupRows.length);
+      const earlyTotal = rule.earlySingle ? rule.earlySingle * groupRows.length : 0;
+      const baseTotal = rule.baseSingle ? rule.baseSingle * groupRows.length : 0;
+      const discountParts = [
+        earlyTotal > total ? `較單科早鳥少 ${formatMoney(earlyTotal - total)}` : '',
+        baseTotal > total ? `較原價少 ${formatMoney(baseTotal - total)}` : ''
+      ].filter(Boolean).join('，');
+      for (const row of groupRows) {
+        row.packageNote = `${rule.label}：總 ${formatMoney(total)}，平均 ${formatMoney(average)} / 科${discountParts ? `；${discountParts}` : ''}`;
+      }
+      continue;
+    }
+    const average = Math.round(total / groupRows.length);
+    for (const row of groupRows) {
+      row.packageNote = `同學期 ${groupRows.length} 科，已登記總額 ${formatMoney(total)}，平均 ${formatMoney(average)} / 科`;
+    }
+  }
+}
+
 function buildStudentCourseFinanceRows(student) {
   if (!student) return [];
   const tuitionEntries = buildStudentIndexes().tuitionByStudent.get(student.id) || [];
@@ -1105,6 +1167,8 @@ function buildStudentCourseFinanceRows(student) {
   for (const course of normalizedCourseEntriesForStudent(student)) {
     const fee = courseTuitionForStudent(student, courseKey(course), tuitionEntries);
     const amount = Math.round(parseNumber(fee?.amount));
+    const withdrawal = studentCourseWithdrawalInfo(student, course.header || course.label);
+    if (amount <= 0 && !withdrawal) continue;
     const standard = inferStandardTuition(amount);
     rows.push({
       id: `imported:${student.id}:${courseKey(course)}`,
@@ -1121,7 +1185,7 @@ function buildStudentCourseFinanceRows(student) {
       paymentLabel: amount > 0 ? studentEffectivePaymentState(student.id, tuitionEntries).label : '未對到科目收費',
       status: '匯入底稿',
       note: fee?.label || '',
-      withdrawal: studentCourseWithdrawalInfo(student, course.header || course.label)
+      withdrawal
     });
   }
 
@@ -1151,26 +1215,123 @@ function buildStudentCourseFinanceRows(student) {
     });
   }
 
-  const termGroups = new Map();
-  for (const row of rows) {
-    if (!row.term || row.amount <= 0) continue;
-    const groupRows = termGroups.get(row.term) || [];
-    groupRows.push(row);
-    termGroups.set(row.term, groupRows);
-  }
-  for (const groupRows of termGroups.values()) {
-    const billableRows = groupRows.filter((row) => row.amount > 0);
-    if (billableRows.length < 2) continue;
-    for (const row of billableRows) {
-      const standard = inferStandardTuition(row.amount);
-      const discount = Math.max(0, standard - row.amount);
-      row.packageNote = discount
-        ? `同學期 ${billableRows.length} 科，疑似合報；每科約優惠 ${formatMoney(discount)}`
-        : `同學期 ${billableRows.length} 科，需核對是否另有合報優惠欄`;
-    }
-  }
+  annotatePackageRows(rows);
 
   return rows.sort((a, b) => `${a.term} ${a.courseName}`.localeCompare(`${b.term} ${b.courseName}`, 'zh-Hant'));
+}
+
+function cleanCohortOptions() {
+  return Array.from(new Map([
+    ...Array.from(cohortGradeLabels.entries()),
+    ...cohortOptions().map((cohort) => [cohort, cohort])
+  ]).entries());
+}
+
+function syncCleanStudentForm(student) {
+  if (!elements.cleanStudentForm) return;
+  const current = elements.cleanStudentForm.elements.cohort.value;
+  elements.cleanStudentFormCohort.innerHTML = cleanCohortOptions()
+    .map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`)
+    .join('');
+  const form = elements.cleanStudentForm;
+  if (!student) {
+    form.reset();
+    form.elements.id.value = '';
+    form.elements.cohort.value = current || elements.cleanStudentGradeFilter.value || '112';
+    elements.cleanStudentArchive.disabled = true;
+    return;
+  }
+  const profile = student.profile || {};
+  form.elements.id.value = student.id || '';
+  form.elements.name.value = studentName(student) || '';
+  form.elements.cohort.value = studentCohortCode(student) || student.sheet || current || '112';
+  form.elements.highSchool.value = profile.highSchool || '';
+  form.elements.juniorHigh.value = profile.juniorHigh || '';
+  form.elements.grade.value = profile.grade || '';
+  form.elements.motherPhone.value = profile.motherPhone || '';
+  form.elements.fatherPhone.value = profile.fatherPhone || '';
+  form.elements.note.value = profile.note || '';
+  elements.cleanStudentArchive.disabled = false;
+}
+
+function cleanStudentRecordFromForm() {
+  const form = elements.cleanStudentForm;
+  const data = Object.fromEntries(new FormData(form).entries());
+  const existing = data.id ? getAllStudents().find((student) => student.id === data.id) : null;
+  const existingManual = data.id ? (state.manualStudents || []).find((student) => student.id === data.id) : null;
+  const id = data.id || nowId('manual_student');
+  return {
+    ...(existing || {}),
+    ...(existingManual || {}),
+    id,
+    source: existing?.source === 'masterImport' ? 'masterEdit' : 'manual',
+    sheet: data.cohort || existing?.sheet || '',
+    row: existing?.row || existingManual?.row || '',
+    selectedCourses: existing?.selectedCourses || existingManual?.selectedCourses || [],
+    archived: false,
+    createdAt: existingManual?.createdAt || existing?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    profile: {
+      ...(existing?.profile || {}),
+      ...(existingManual?.profile || {}),
+      name: String(data.name || '').trim(),
+      highSchool: String(data.highSchool || '').trim(),
+      juniorHigh: String(data.juniorHigh || '').trim(),
+      grade: String(data.grade || '').trim(),
+      motherPhone: String(data.motherPhone || '').trim(),
+      fatherPhone: String(data.fatherPhone || '').trim(),
+      note: String(data.note || '').trim()
+    }
+  };
+}
+
+function cleanTeacherById(id) {
+  return cleanTeacherRows().find((teacher) => teacher.id === id) ||
+    masterTeacherRowsData().find((teacher) => teacher.id === id) ||
+    (state.manualTeachers || []).find((teacher) => teacher.id === id) ||
+    null;
+}
+
+function syncCleanTeacherForm(teacher) {
+  if (!elements.cleanTeacherForm) return;
+  const form = elements.cleanTeacherForm;
+  if (!teacher) {
+    form.reset();
+    form.elements.id.value = '';
+    elements.cleanTeacherArchive.disabled = true;
+    return;
+  }
+  form.elements.id.value = teacher.id || '';
+  form.elements.name.value = teacher.name || '';
+  form.elements.subject.value = teacher.subject || '';
+  form.elements.defaultShare.value = teacher.defaultShare || '';
+  form.elements.defaultFixedRate.value = teacher.defaultFixedRate || '';
+  form.elements.contact.value = teacher.contact || '';
+  form.elements.note.value = teacher.note || '';
+  elements.cleanTeacherArchive.disabled = false;
+}
+
+function cleanTeacherRecordFromForm() {
+  const form = elements.cleanTeacherForm;
+  const data = Object.fromEntries(new FormData(form).entries());
+  const name = String(data.name || '').trim();
+  const existing = data.id ? cleanTeacherById(data.id) : null;
+  const existingByName = (state.manualTeachers || []).find((teacher) => normalizedCompareText(teacher.name) === normalizedCompareText(name));
+  const id = existingByName?.id || existing?.id || stableMasterId('manual_teacher', [name]);
+  return {
+    ...(existing || {}),
+    ...(existingByName || {}),
+    id,
+    createdAt: existingByName?.createdAt || existing?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    name,
+    subject: String(data.subject || '').trim(),
+    defaultShare: parseNumber(data.defaultShare),
+    defaultFixedRate: parseNumber(data.defaultFixedRate),
+    contact: String(data.contact || '').trim(),
+    note: String(data.note || '').trim(),
+    archived: false
+  };
 }
 
 function cleanSelectedStudent() {
@@ -1203,6 +1364,7 @@ function renderCleanStudentLedger() {
     : '<option value="">沒有符合的學生</option>';
   elements.cleanStudentSelect.value = selectedStudent?.id || '';
   elements.cleanStudentSelect.disabled = !students.length;
+  syncCleanStudentForm(selectedStudent);
 
   const courseRows = buildStudentCourseFinanceRows(selectedStudent);
   const selectedCourse = elements.cleanStudentCourseFilter.value;
@@ -1238,7 +1400,7 @@ function renderCleanStudentLedger() {
       return `
         <tr>
           <td>${escapeHtml(row.term || '未分學期')}<br><span class="muted">${escapeHtml(row.cohort || '')}</span></td>
-          <td><strong>${escapeHtml(row.courseName || '')}</strong><br><span class="muted">${escapeHtml(row.courseLabel || '')}</span></td>
+          <td><strong>${escapeHtml([row.term, row.courseName].filter(Boolean).join(' '))}</strong><br><span class="muted">${escapeHtml(row.note || row.courseLabel || '')}</span></td>
           <td>${escapeHtml(row.teacherName || '未指定')}</td>
           <td class="money">${row.amount ? formatMoney(row.amount) : '未對到'}${row.originalAmount ? `<br><span class="muted">原 ${formatMoney(row.originalAmount)}</span>` : ''}</td>
           <td>${escapeHtml(discountText)}</td>
@@ -1286,9 +1448,13 @@ function renderCleanStudentLedger() {
 function cleanTeacherRows() {
   const masterRows = masterTeacherRowsData().filter((teacher) => !teacher.archived);
   if (masterRows.length) return masterRows;
+  const archivedTeacherNames = new Set((state.manualTeachers || [])
+    .filter((teacher) => teacher.archived)
+    .map((teacher) => normalizedCompareText(teacher.name)));
   const blocksByTeacher = new Map();
   for (const block of getTeacherRosterBlocks()) {
     const teacherName = block.teacherSheet || '未指定老師';
+    if (archivedTeacherNames.has(normalizedCompareText(teacherName))) continue;
     const row = blocksByTeacher.get(teacherName) || {
       id: stableMasterId('fallback_teacher', [teacherName]),
       name: teacherName,
@@ -1348,6 +1514,7 @@ function renderCleanTeacherLedger() {
     : '<option value="">沒有符合的老師</option>';
   elements.cleanTeacherSelect.value = selectedMasterTeacherId;
   elements.cleanTeacherSelect.disabled = !teachers.length;
+  syncCleanTeacherForm(selectedTeacher);
   const courses = (selectedTeacher?.courses || [])
     .filter((course) => !elements.cleanTeacherTermFilter.value || course.term === elements.cleanTeacherTermFilter.value)
     .sort((a, b) => `${a.term} ${a.courseName}`.localeCompare(`${b.term} ${b.courseName}`, 'zh-Hant'));
@@ -4889,6 +5056,49 @@ elements.cleanStudentSelect?.addEventListener('change', () => {
   renderCleanStudentLedger();
 });
 
+elements.cleanStudentForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const record = cleanStudentRecordFromForm();
+  if (!studentName(record)) return;
+  const before = getAllStudents().find((student) => student.id === record.id) || null;
+  mergeByIdIntoState('manualStudents', [record]);
+  selectedCleanStudentId = record.id;
+  renderAll();
+  await recordAudit('student', record.id, before ? 'update' : 'create', before, record, '學生資料表儲存學生');
+  try {
+    await saveCloudRecord('manualStudents', record);
+  } catch (error) {
+    setCloudStatus(`學生雲端寫入失敗：${error.code || error.message}`);
+  }
+});
+
+elements.cleanStudentNew?.addEventListener('click', () => {
+  selectedCleanStudentId = '';
+  elements.cleanStudentForm?.reset();
+  syncCleanStudentForm(null);
+});
+
+elements.cleanStudentArchive?.addEventListener('click', async () => {
+  const id = elements.cleanStudentForm?.elements.id.value || selectedCleanStudentId;
+  const existing = id ? getAllStudents().find((student) => student.id === id) : null;
+  if (!existing) return;
+  const before = { ...existing, profile: { ...(existing.profile || {}) } };
+  const record = {
+    ...existing,
+    archived: true,
+    updatedAt: new Date().toISOString()
+  };
+  mergeByIdIntoState('manualStudents', [record]);
+  selectedCleanStudentId = '';
+  renderAll();
+  await recordAudit('student', record.id, 'archive', before, record, '學生資料表封存學生');
+  try {
+    await saveCloudRecord('manualStudents', record);
+  } catch (error) {
+    setCloudStatus(`學生封存雲端寫入失敗：${error.code || error.message}`);
+  }
+});
+
 elements.cleanStudentDetail?.addEventListener('click', (event) => {
   const button = event.target.closest('[data-clean-fill-student]');
   if (!button) return;
@@ -4909,6 +5119,53 @@ elements.cleanTeacherSelect?.addEventListener('change', () => {
   selectedMasterTeacherId = elements.cleanTeacherSelect.value;
   selectedCleanTeacherCourseId = '';
   renderCleanTeacherLedger();
+});
+
+elements.cleanTeacherForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const record = cleanTeacherRecordFromForm();
+  if (!record.name) return;
+  const before = cleanTeacherById(record.id);
+  mergeByIdIntoState('manualTeachers', [record]);
+  selectedMasterTeacherId = record.id;
+  renderAll();
+  await recordAudit('teacher', record.id, before ? 'update' : 'create', before, record, '老師課程表儲存老師');
+  try {
+    await saveCloudRecord('manualTeachers', record);
+  } catch (error) {
+    setCloudStatus(`老師雲端寫入失敗：${error.code || error.message}`);
+  }
+});
+
+elements.cleanTeacherNew?.addEventListener('click', () => {
+  selectedMasterTeacherId = '';
+  selectedCleanTeacherCourseId = '';
+  elements.cleanTeacherForm?.reset();
+  syncCleanTeacherForm(null);
+});
+
+elements.cleanTeacherArchive?.addEventListener('click', async () => {
+  const form = elements.cleanTeacherForm;
+  const id = form?.elements.id.value || selectedMasterTeacherId;
+  const existing = id ? cleanTeacherById(id) : null;
+  if (!existing?.name) return;
+  const before = { ...existing };
+  const record = {
+    ...existing,
+    id: String(existing.id || '').startsWith('manual_teacher') ? existing.id : stableMasterId('manual_teacher', [existing.name]),
+    archived: true,
+    updatedAt: new Date().toISOString()
+  };
+  mergeByIdIntoState('manualTeachers', [record]);
+  selectedMasterTeacherId = '';
+  selectedCleanTeacherCourseId = '';
+  renderAll();
+  await recordAudit('teacher', record.id, 'archive', before, record, '老師課程表封存老師');
+  try {
+    await saveCloudRecord('manualTeachers', record);
+  } catch (error) {
+    setCloudStatus(`老師封存雲端寫入失敗：${error.code || error.message}`);
+  }
 });
 
 elements.cleanTeacherCourseRows?.addEventListener('click', (event) => {

@@ -207,6 +207,30 @@ button {
   margin-top: 12px;
 }
 
+.inline-editor {
+  background: #f7fbfd;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 12px 0 16px;
+  padding: 10px 12px 12px;
+}
+
+.inline-editor summary {
+  color: var(--brand);
+  cursor: pointer;
+  font-weight: 800;
+  min-height: 34px;
+  padding: 6px 2px;
+}
+
+.inline-editor[open] summary {
+  margin-bottom: 4px;
+}
+
+.inline-editor .form-grid {
+  box-shadow: none;
+}
+
 .payroll-builder {
   margin-bottom: 18px;
 }

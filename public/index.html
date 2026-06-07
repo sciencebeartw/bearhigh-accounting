@@ -91,6 +91,49 @@
             </div>
           </div>
           <section class="import-summary" id="cleanStudentSummary"></section>
+          <details class="inline-editor">
+            <summary>新增 / 修改 / 封存學生</summary>
+            <form class="form-grid compact-form" id="cleanStudentForm">
+              <input name="id" type="hidden">
+              <label>
+                <span>姓名</span>
+                <input name="name" required autocomplete="off">
+              </label>
+              <label>
+                <span>年級 / 屆別</span>
+                <select name="cohort" id="cleanStudentFormCohort" required></select>
+              </label>
+              <label>
+                <span>高中 / 學校</span>
+                <input name="highSchool" autocomplete="off">
+              </label>
+              <label>
+                <span>國中</span>
+                <input name="juniorHigh" autocomplete="off">
+              </label>
+              <label>
+                <span>年級文字</span>
+                <input name="grade" autocomplete="off" placeholder="例：高一">
+              </label>
+              <label>
+                <span>母手機</span>
+                <input name="motherPhone" inputmode="tel" autocomplete="off">
+              </label>
+              <label>
+                <span>父手機</span>
+                <input name="fatherPhone" inputmode="tel" autocomplete="off">
+              </label>
+              <label class="wide">
+                <span>備註</span>
+                <input name="note" autocomplete="off">
+              </label>
+              <div class="actions wide">
+                <button class="primary" type="submit">儲存學生</button>
+                <button class="ghost" id="cleanStudentNew" type="button">清空新增</button>
+                <button class="danger" id="cleanStudentArchive" type="button">封存學生</button>
+              </div>
+            </form>
+          </details>
           <div class="split-view clean-split">
             <div class="table-wrap">
               <table>
@@ -143,6 +186,41 @@
             </div>
           </div>
           <section class="import-summary" id="cleanTeacherSummary"></section>
+          <details class="inline-editor">
+            <summary>新增 / 修改 / 封存老師</summary>
+            <form class="form-grid compact-form" id="cleanTeacherForm">
+              <input name="id" type="hidden">
+              <label>
+                <span>老師</span>
+                <input name="name" required autocomplete="off">
+              </label>
+              <label>
+                <span>科目</span>
+                <input name="subject" autocomplete="off" placeholder="例：數學、化學">
+              </label>
+              <label>
+                <span>預設分潤 %</span>
+                <input name="defaultShare" inputmode="decimal" placeholder="例：50">
+              </label>
+              <label>
+                <span>預設鐘點 / 堂</span>
+                <input name="defaultFixedRate" inputmode="numeric">
+              </label>
+              <label>
+                <span>聯絡方式</span>
+                <input name="contact" autocomplete="off">
+              </label>
+              <label class="wide">
+                <span>備註</span>
+                <input name="note" autocomplete="off">
+              </label>
+              <div class="actions wide">
+                <button class="primary" type="submit">儲存老師</button>
+                <button class="ghost" id="cleanTeacherNew" type="button">清空新增</button>
+                <button class="danger" id="cleanTeacherArchive" type="button">封存老師</button>
+              </div>
+            </form>
+          </details>
           <div class="split-view clean-split">
             <div class="table-wrap">
               <table>
