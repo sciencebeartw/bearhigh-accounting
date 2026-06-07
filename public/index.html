@@ -65,34 +65,8 @@
               <p class="muted">從學生出發，核對基本資料、各學年度修課、合報優惠、收款與退班退費。</p>
             </div>
           </div>
-          <div class="matrix-filter-bar">
-            <div class="matrix-filter-title">學生篩選</div>
-            <div class="filter-grid">
-              <label>
-                <span>年級</span>
-                <select id="cleanStudentGradeFilter">
-                  <option value="">全部</option>
-                </select>
-              </label>
-              <label>
-                <span>搜尋</span>
-                <input id="cleanStudentSearch" autocomplete="off" placeholder="姓名、學校、課程">
-              </label>
-              <label class="wide">
-                <span>學生</span>
-                <select id="cleanStudentSelect"></select>
-              </label>
-              <label>
-                <span>課程篩選</span>
-                <select id="cleanStudentCourseFilter">
-                  <option value="">全部課程</option>
-                </select>
-              </label>
-            </div>
-          </div>
-          <section class="import-summary" id="cleanStudentSummary"></section>
-          <details class="inline-editor" open>
-            <summary>學生資料管理：新增 / 修改 / 封存</summary>
+          <details class="inline-editor clean-student-editor">
+            <summary>學生基本資料管理：新增 / 修改 / 封存</summary>
             <form class="form-grid compact-form" id="cleanStudentForm">
               <input name="id" type="hidden">
               <label>
@@ -134,26 +108,56 @@
               </div>
             </form>
           </details>
-          <div class="split-view clean-split">
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>學年度 / 學期</th>
-                    <th>課程</th>
-                    <th>老師</th>
-                    <th>應收 / 原價</th>
-                    <th>合報 / 抵用</th>
-                    <th>收款 / 退費</th>
-                    <th>狀態</th>
-                  </tr>
-                </thead>
-                <tbody id="cleanStudentCourseRows"></tbody>
-              </table>
+          <div class="matrix-filter-bar">
+            <div class="matrix-filter-title">學生篩選</div>
+            <div class="filter-grid">
+              <label>
+                <span>年級</span>
+                <select id="cleanStudentGradeFilter">
+                  <option value="">全部</option>
+                </select>
+              </label>
+              <label>
+                <span>搜尋</span>
+                <input id="cleanStudentSearch" autocomplete="off" placeholder="姓名、學校、課程">
+              </label>
+              <label class="wide">
+                <span>學生</span>
+                <select id="cleanStudentSelect"></select>
+              </label>
+              <label>
+                <span>學年度 / 學期</span>
+                <select id="cleanStudentTermFilter">
+                  <option value="">全部學期</option>
+                </select>
+              </label>
+              <label>
+                <span>課程</span>
+                <select id="cleanStudentCourseFilter">
+                  <option value="">全部課程</option>
+                </select>
+              </label>
             </div>
-            <aside class="detail-panel" id="cleanStudentDetail">
-              <p class="empty">選一位學生查看資料</p>
-            </aside>
+          </div>
+          <section class="import-summary" id="cleanStudentSummary"></section>
+          <section class="detail-panel clean-student-profile" id="cleanStudentDetail">
+            <p class="empty">選一位學生查看資料</p>
+          </section>
+          <div class="table-wrap clean-course-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>學年度 / 學期</th>
+                  <th>課程</th>
+                  <th>老師</th>
+                  <th>應收 / 原價</th>
+                  <th>合報 / 抵用</th>
+                  <th>收款 / 退費</th>
+                  <th>狀態</th>
+                </tr>
+              </thead>
+              <tbody id="cleanStudentCourseRows"></tbody>
+            </table>
           </div>
         </section>
       </section>

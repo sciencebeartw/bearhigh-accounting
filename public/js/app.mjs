@@ -106,6 +106,7 @@ const elements = {
   cleanStudentSearch: document.querySelector('#cleanStudentSearch'),
   cleanStudentSelect: document.querySelector('#cleanStudentSelect'),
   cleanStudentSummary: document.querySelector('#cleanStudentSummary'),
+  cleanStudentTermFilter: document.querySelector('#cleanStudentTermFilter'),
   cleanTeacherArchive: document.querySelector('#cleanTeacherArchive'),
   cleanTeacherCourseDetail: document.querySelector('#cleanTeacherCourseDetail'),
   cleanTeacherCourseRows: document.querySelector('#cleanTeacherCourseRows'),
@@ -1207,6 +1208,7 @@ function buildStudentCourseFinanceRows(student) {
       paidAmount: 0,
       balance: 0,
       paymentLabel: amount > 0 ? studentEffectivePaymentState(student.id, tuitionEntries).label : '未對到科目收費',
+      paymentDate: fee?.paymentDate || tuitionPaymentDateLabel(tuitionEntries),
       status: '匯入底稿',
       note: fee?.label || '',
       withdrawal
@@ -1218,6 +1220,12 @@ function buildStudentCourseFinanceRows(student) {
     const course = courses.get(enrollment.courseId);
     const receivable = receivableForEnrollment(enrollment.id);
     const amount = Math.round(parseNumber(receivable?.amount ?? enrollment.tuitionAmount));
+    const paymentDate = Array.from(new Set([
+      enrollment.paymentDate,
+      ...(state.paymentLedger || [])
+        .filter((payment) => payment.sourceEnrollmentId === enrollment.id || payment.receivableId === receivable?.id)
+        .map((payment) => payment.date)
+    ].filter(Boolean))).join('、');
     rows.push({
       id: `manual:${enrollment.id}`,
       source: 'manual',
@@ -1231,6 +1239,7 @@ function buildStudentCourseFinanceRows(student) {
       discountAmount: Math.round(parseNumber(receivable?.discountAmount ?? enrollment.discountAmount)),
       paidAmount: Math.round(parseNumber(receivable?.paidAmount)),
       balance: Math.round(parseNumber(receivable?.balance)),
+      paymentDate,
       paymentLabel: receivableStatusLabel(receivable?.status) || (enrollment.paymentDate ? '有繳費日期' : '未收'),
       status: enrollment.status || receivable?.status || 'active',
       note: [enrollment.note, receivable?.note].filter(Boolean).join('；'),
@@ -1407,13 +1416,20 @@ function renderCleanStudentLedger() {
   syncCleanStudentForm(selectedStudent);
 
   const courseRows = buildStudentCourseFinanceRows(selectedStudent);
+  const selectedTerm = elements.cleanStudentTermFilter.value;
+  const termOptions = Array.from(new Set(courseRows.map((row) => row.term).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+  elements.cleanStudentTermFilter.innerHTML = '<option value="">全部學期</option>' +
+    termOptions.map((term) => `<option value="${escapeHtml(term)}">${escapeHtml(term)}</option>`).join('');
+  elements.cleanStudentTermFilter.value = termOptions.includes(selectedTerm) ? selectedTerm : '';
+  const termFilteredRows = courseRows.filter((row) => !elements.cleanStudentTermFilter.value || row.term === elements.cleanStudentTermFilter.value);
   const selectedCourse = elements.cleanStudentCourseFilter.value;
-  const courseOptions = Array.from(new Map(courseRows.map((row) => [row.courseName, row.courseName])).entries())
+  const courseOptions = Array.from(new Map(termFilteredRows.map((row) => [row.courseName, row.courseName])).entries())
     .sort((a, b) => a[1].localeCompare(b[1], 'zh-Hant'));
   elements.cleanStudentCourseFilter.innerHTML = '<option value="">全部課程</option>' +
     courseOptions.map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`).join('');
   elements.cleanStudentCourseFilter.value = courseOptions.some(([value]) => value === selectedCourse) ? selectedCourse : '';
-  const visibleRows = courseRows.filter((row) => !elements.cleanStudentCourseFilter.value || row.courseName === elements.cleanStudentCourseFilter.value);
+  const visibleRows = termFilteredRows.filter((row) => !elements.cleanStudentCourseFilter.value || row.courseName === elements.cleanStudentCourseFilter.value);
   const amountTotal = visibleRows.reduce((sum, row) => sum + parseNumber(row.amount), 0);
   const paidTotal = visibleRows.reduce((sum, row) => sum + parseNumber(row.paidAmount), 0);
   const refundTotal = visibleRows.reduce((sum, row) => sum + parseNumber(row.withdrawal?.amount), 0);
@@ -1433,10 +1449,11 @@ function renderCleanStudentLedger() {
         row.discountAmount ? `手動優惠 ${formatMoney(row.discountAmount)}` : ''
       ].filter(Boolean).join('；') || '無';
       const paymentText = [
+        row.paymentDate ? `繳費日期 ${escapeHtml(row.paymentDate)}` : '',
         row.paidAmount ? `已收 ${formatMoney(row.paidAmount)}` : '',
         row.balance ? `未收 ${formatMoney(row.balance)}` : '',
-        row.withdrawal ? row.withdrawal.label : ''
-      ].filter(Boolean).join('<br>') || row.paymentLabel || '';
+        row.withdrawal ? escapeHtml(row.withdrawal.label) : ''
+      ].filter(Boolean).join('<br>') || escapeHtml(row.paymentLabel || '');
       return `
         <tr>
           <td>${escapeHtml(row.term || '未分學期')}<br><span class="muted">${escapeHtml(row.cohort || '')}</span></td>
@@ -1458,6 +1475,7 @@ function renderCleanStudentLedger() {
   const events = (state.membershipEvents || []).filter((event) => (
     event.studentId === selectedStudent.id || (!event.studentId && event.studentName === studentName(selectedStudent))
   ));
+  const paymentDateCount = new Set(courseRows.map((row) => row.paymentDate).filter(Boolean)).size;
   elements.cleanStudentDetail.innerHTML = `
     <div class="detail-header">
       <div>
@@ -1473,15 +1491,15 @@ function renderCleanStudentLedger() {
       <div><span>狀態</span><strong>${escapeHtml(studentStatusLabel(selectedStudent.id))}</strong></div>
       <div><span>母手機</span><strong>${escapeHtml(profile.motherPhone || '')}</strong></div>
       <div><span>父手機</span><strong>${escapeHtml(profile.fatherPhone || '')}</strong></div>
+      <div><span>實際修課</span><strong>${formatMoney(courseRows.length)} 科</strong></div>
+      <div><span>繳費日期</span><strong>${paymentDateCount ? `${formatMoney(paymentDateCount)} 組` : '未見'}</strong></div>
     </div>
-    <h4>學期修課摘要</h4>
-    <div class="mini-record-list">
-      ${courseRows.length ? courseRows.map((row) => `<div>${escapeHtml(row.term || '未分學期')}｜${escapeHtml(row.courseName)}｜${formatMoney(row.amount)}${row.packageNote ? `｜${escapeHtml(row.packageNote)}` : ''}</div>`).join('') : '<div class="muted">尚無修課資料。</div>'}
-    </div>
-    <h4>異動紀錄</h4>
-    <div class="mini-record-list">
-      ${events.length ? events.map((event) => `<div>${escapeHtml(event.date || '')}｜${escapeHtml(event.courseName || '')}｜${escapeHtml(event.action || '')}${event.sessionNo ? ` 第 ${escapeHtml(event.sessionNo)} 堂` : ''}${event.note ? `｜${escapeHtml(event.note)}` : ''}</div>`).join('') : '<div class="muted">尚無異動。</div>'}
-    </div>
+    <details class="compact-fold">
+      <summary>異動紀錄 ${events.length ? `(${formatMoney(events.length)})` : ''}</summary>
+      <div class="mini-record-list">
+        ${events.length ? events.map((event) => `<div>${escapeHtml(event.date || '')}｜${escapeHtml(event.courseName || '')}｜${escapeHtml(event.action || '')}${event.sessionNo ? ` 第 ${escapeHtml(event.sessionNo)} 堂` : ''}${event.note ? `｜${escapeHtml(event.note)}` : ''}</div>`).join('') : '<div class="muted">尚無異動。</div>'}
+      </div>
+    </details>
   `;
 }
 
@@ -2205,6 +2223,26 @@ function tuitionEntryDisplayValue(entry) {
   return String(entry.value ?? '');
 }
 
+function tuitionPaymentDateLabel(entries, anchorColumn = null) {
+  const dates = (entries || [])
+    .filter((entry) => entry.kind === 'payment_date')
+    .map((entry) => ({
+      date: tuitionEntryDisplayValue(entry),
+      distance: anchorColumn === null ? 0 : columnIndex(entry.column) - anchorColumn
+    }))
+    .filter((entry) => entry.date)
+    .filter((entry) => anchorColumn === null || (entry.distance >= -2 && entry.distance <= 10));
+  const source = dates.length ? dates : (entries || [])
+    .filter((entry) => entry.kind === 'payment_date')
+    .map((entry) => ({ date: tuitionEntryDisplayValue(entry), distance: 0 }))
+    .filter((entry) => entry.date);
+  const uniqueDates = Array.from(new Set(source
+    .sort((a, b) => Math.abs(a.distance) - Math.abs(b.distance))
+    .map((entry) => entry.date)));
+  if (!uniqueDates.length) return '';
+  return uniqueDates.slice(0, 2).join('、') + (uniqueDates.length > 2 ? ` 等 ${formatMoney(uniqueDates.length)} 筆` : '');
+}
+
 function courseTuitionForStudent(student, courseKeyValue, tuitionEntries) {
   const course = (student.selectedCourses || []).find((item) => courseKey(item) === courseKeyValue);
   if (!course) return null;
@@ -2228,7 +2266,8 @@ function courseTuitionForStudent(student, courseKeyValue, tuitionEntries) {
   return {
     amount: tuitionAmount(match),
     label: `${match.header} ${formatMoney(tuitionAmount(match))}`,
-    column: match.column
+    column: match.column,
+    paymentDate: tuitionPaymentDateLabel(tuitionEntries, columnIndex(match.column))
   };
 }
 
@@ -5089,10 +5128,23 @@ elements.tabs.forEach((tab) => {
   const refreshStudents = () => {
     selectedCleanStudentId = '';
     cleanStudentSelectionTouched = false;
+    if (elements.cleanStudentTermFilter) elements.cleanStudentTermFilter.value = '';
+    if (elements.cleanStudentCourseFilter) elements.cleanStudentCourseFilter.value = '';
     renderCleanStudentLedger();
   };
   element?.addEventListener('input', refreshStudents);
   element?.addEventListener('change', refreshStudents);
+});
+
+[
+  elements.cleanStudentTermFilter
+].forEach((element) => {
+  const refreshCourses = () => {
+    if (elements.cleanStudentCourseFilter) elements.cleanStudentCourseFilter.value = '';
+    renderCleanStudentLedger();
+  };
+  element?.addEventListener('input', refreshCourses);
+  element?.addEventListener('change', refreshCourses);
 });
 
 elements.cleanStudentCourseFilter?.addEventListener('input', renderCleanStudentLedger);

@@ -887,6 +887,45 @@ tr[data-open-payroll-block] {
   align-items: start;
 }
 
+.clean-student-editor {
+  margin: 10px 0 16px;
+}
+
+.clean-student-profile.detail-panel {
+  max-height: none;
+  overflow: visible;
+  position: static;
+  top: auto;
+}
+
+.clean-student-profile .detail-header {
+  align-items: center;
+}
+
+.clean-student-profile .profile-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.clean-course-table {
+  margin-top: 16px;
+}
+
+.compact-fold {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 10px;
+}
+
+.compact-fold summary {
+  color: var(--brand);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.compact-fold .mini-record-list {
+  margin-top: 8px;
+}
+
 .clean-workspace .detail-panel h4 {
   margin: 18px 0 8px;
 }
