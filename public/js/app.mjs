@@ -28,6 +28,7 @@ import {
   sessionDatesToText,
   validateSessionDatePlan
 } from './sessions.mjs';
+import { mergeCleanTeacherRows } from './clean-teacher-rows.mjs';
 
 const storageKey = 'bearhigh.accounting.v1';
 const accountingRoot = 'accounting';
@@ -1504,45 +1505,19 @@ function renderCleanStudentLedger() {
 }
 
 function cleanTeacherRows() {
-  const masterRows = masterTeacherRowsData().filter((teacher) => !teacher.archived);
-  if (masterRows.length) return masterRows;
   const archivedTeacherNames = new Set((state.manualTeachers || [])
     .filter((teacher) => teacher.archived)
     .map((teacher) => normalizedCompareText(teacher.name)));
-  const blocksByTeacher = new Map();
-  for (const block of getTeacherRosterBlocks()) {
-    const teacherName = block.teacherSheet || '未指定老師';
-    if (archivedTeacherNames.has(normalizedCompareText(teacherName))) continue;
-    const row = blocksByTeacher.get(teacherName) || {
-      id: stableMasterId('fallback_teacher', [teacherName]),
-      name: teacherName,
-      subject: canonicalSubject(teacherName),
-      courseCount: 0,
-      enrollmentCount: 0,
-      feeTotal: 0,
-      courses: []
-    };
-    row.courseCount += 1;
-    row.enrollmentCount += block.rowCount || 0;
-    row.courses.push({
-      id: block.key,
-      term: inferTermLabel(block.title, block.sheet),
-      cohort: block.sheet || '',
-      courseName: block.title || '',
-      teacherName,
-      sessionCount: 24,
-      enrollmentCount: block.rowCount || 0,
-      feeTotal: 0,
-      enrollments: (block.rows || []).map((blockRow) => ({
-        id: `${block.key}:${blockRow.row}`,
-        studentName: blockRow.fields?.['姓名'] || '',
-        tuitionAmount: parseNumber(blockRow.fields?.['單堂']) * 24,
-        source: 'teacherRoster'
-      }))
-    });
-    blocksByTeacher.set(teacherName, row);
-  }
-  return Array.from(blocksByTeacher.values());
+  return mergeCleanTeacherRows({
+    masterRows: masterTeacherRowsData(),
+    rosterBlocks: getTeacherRosterBlocks(),
+    archivedTeacherNames,
+    normalizeText: normalizedCompareText,
+    parseAmount: parseNumber,
+    stableFallbackId: (teacherName) => stableMasterId('fallback_teacher', [teacherName]),
+    canonicalSubject,
+    inferTermLabel
+  });
 }
 
 function renderCleanTeacherLedger() {
