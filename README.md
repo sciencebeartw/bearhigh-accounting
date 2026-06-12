@@ -6,6 +6,8 @@
 
 Firebase 專案也獨立使用 `bearhigh`，避免開發期與 `sciencebear-admin` 正式行政資料互相污染。
 
+後續產品設計請先讀 `docs/numbers_workflow.md`。該文件把目前 Numbers 的學生修課、學費合報/退費、老師課程名單與月薪資公式整理成主檔化工作流，之後 UI 與資料模型應以那份規格為準。
+
 ## 第一階段目標
 
 1. 讀取高中部學生名冊 Numbers 匯出的 `.xlsx` 快照。
