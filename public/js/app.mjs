@@ -1042,10 +1042,10 @@ function masterTeacherRowsData() {
 }
 
 const cohortGradeLabels = new Map([
-  ['112', '112（目前升高一）'],
-  ['111', '111（目前高一）'],
-  ['110', '110（目前高二）'],
-  ['109', '109（目前高三）'],
+  ['112', '112（升高一）'],
+  ['111', '111（高一）'],
+  ['110', '110（高二）'],
+  ['109', '109（高三）'],
   ['108', '108（已畢業）']
 ]);
 
@@ -1056,6 +1056,7 @@ function studentCohortCode(student) {
 }
 
 function studentCohortLabel(student) {
+  if (student?.sheet) return student.sheet;
   const code = studentCohortCode(student);
   return cohortGradeLabels.get(code) || code || '未分年級';
 }
@@ -1255,7 +1256,11 @@ function buildStudentCourseFinanceRows(student) {
 }
 
 function cleanCohortOptions() {
+  const importedCohorts = Array.from(new Map(getStudents()
+    .map((student) => [student.sheet || studentCohortCode(student), studentCohortLabel(student)])
+    .filter(([value]) => value)).entries());
   return Array.from(new Map([
+    ...importedCohorts,
     ...Array.from(cohortGradeLabels.entries()),
     ...cohortOptions().map((cohort) => [cohort, cohort])
   ]).entries());
