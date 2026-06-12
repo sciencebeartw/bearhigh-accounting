@@ -794,6 +794,25 @@ function inferTermLabel(group, fallbackSheet = '') {
   return text || '未分學期';
 }
 
+function normalizeMasterCourseTerm(term, cohort = '') {
+  const raw = String(term || '').trim();
+  const cohortYear = String(cohort || '').match(/(\d{3})\s*學年度/);
+  if (raw && !/(\d{3})\s*學年度/.test(raw) && cohortYear && raw.startsWith('學年度')) {
+    return raw.replace(/^學年度/, `${cohortYear[1]}學年度`);
+  }
+  return raw || (cohortYear ? `${cohortYear[1]}學年度` : '未分學期');
+}
+
+function compactTeacherTermSummary(teacher) {
+  const terms = Array.from(new Set((teacher.courses || [])
+    .map((course) => course.term)
+    .filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+  if (!terms.length) return '';
+  const shown = terms.slice(0, 2).join('、');
+  return terms.length > 2 ? `${shown} 等` : shown;
+}
+
 function stableMasterId(prefix, parts) {
   return `${prefix}_${safeFirebaseKey(parts.filter(Boolean).join('_')).slice(0, 120)}`;
 }
@@ -997,6 +1016,7 @@ function masterCourseRowsData() {
     }, 0);
     return {
       ...course,
+      term: normalizeMasterCourseTerm(course.term || course.termLabel, course.cohort || course.sheet),
       enrollmentCount: courseEnrollments.length,
       feeTotal,
       enrollments: courseEnrollments
@@ -1562,7 +1582,10 @@ function renderCleanTeacherLedger() {
   const selectedTeacher = teachers.find((teacher) => teacher.id === selectedMasterTeacherId) || teachers[0] || null;
   selectedMasterTeacherId = selectedTeacher?.id || '';
   elements.cleanTeacherSelect.innerHTML = teachers.length
-    ? teachers.map((teacher) => `<option value="${escapeHtml(teacher.id)}">${escapeHtml(teacher.name)}｜${formatMoney(teacher.courseCount)} 門課</option>`).join('')
+    ? teachers.map((teacher) => {
+      const termSummary = compactTeacherTermSummary(teacher);
+      return `<option value="${escapeHtml(teacher.id)}">${escapeHtml(teacher.name)}｜${formatMoney(teacher.courseCount)} 門課${termSummary ? `｜${escapeHtml(termSummary)}` : ''}</option>`;
+    }).join('')
     : '<option value="">沒有符合的老師</option>';
   elements.cleanTeacherSelect.value = selectedMasterTeacherId;
   elements.cleanTeacherSelect.disabled = !teachers.length;
