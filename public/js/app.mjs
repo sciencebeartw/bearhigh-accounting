@@ -1061,12 +1061,20 @@ function studentCohortLabel(student) {
   return cohortGradeLabels.get(code) || code || '未分年級';
 }
 
+function studentCohortFilterValue(student) {
+  return student?.sheet || studentCohortCode(student);
+}
+
 function cleanStudentSearchText(student) {
   const { tuitionByStudent } = buildStudentIndexes();
   return studentSearchText(student, tuitionByStudent.get(student.id) || []);
 }
 
 function cleanStudentActualCourseCount(student, tuitionEntries = [], manualEnrollments = []) {
+  const activeManualEnrollments = manualEnrollments.filter((enrollment) => enrollment.status !== 'archived');
+  if (student?.source === 'masterImport' && activeManualEnrollments.length) {
+    return activeManualEnrollments.length;
+  }
   let count = 0;
   for (const course of normalizedCourseEntriesForStudent(student)) {
     const fee = courseTuitionForStudent(student, courseKey(course), tuitionEntries);
@@ -1075,7 +1083,7 @@ function cleanStudentActualCourseCount(student, tuitionEntries = [], manualEnrol
       count += 1;
     }
   }
-  return count + manualEnrollments.filter((enrollment) => enrollment.status !== 'archived').length;
+  return count + activeManualEnrollments.length;
 }
 
 function cleanFilteredStudents() {
@@ -1084,7 +1092,7 @@ function cleanFilteredStudents() {
   const { tuitionByStudent } = buildStudentIndexes();
   const enrollmentsByStudent = manualEnrollmentsByStudent();
   return getStudents()
-    .filter((student) => !grade || studentCohortCode(student) === grade || student.sheet === grade)
+    .filter((student) => !grade || studentCohortFilterValue(student) === grade || studentCohortCode(student) === grade)
     .filter((student) => !keyword || normalizedCompareText(cleanStudentSearchText(student)).includes(keyword))
     .map((student) => ({
       student,
@@ -1093,7 +1101,7 @@ function cleanFilteredStudents() {
     .sort((a, b) => (
       (b.courseCount > 0) - (a.courseCount > 0) ||
       b.courseCount - a.courseCount ||
-      `${studentCohortCode(a.student)} ${studentName(a.student)} ${a.student.row}`.localeCompare(`${studentCohortCode(b.student)} ${studentName(b.student)} ${b.student.row}`, 'zh-Hant')
+      `${studentCohortFilterValue(a.student)} ${studentName(a.student)} ${a.student.row}`.localeCompare(`${studentCohortFilterValue(b.student)} ${studentName(b.student)} ${b.student.row}`, 'zh-Hant')
     ))
     .map((row) => row.student);
 }
@@ -1190,35 +1198,39 @@ function annotatePackageRows(rows) {
 function buildStudentCourseFinanceRows(student) {
   if (!student) return [];
   const tuitionEntries = buildStudentIndexes().tuitionByStudent.get(student.id) || [];
+  const manualEnrollments = manualEnrollmentsByStudent().get(student.id) || [];
+  const showImportedRows = !(student.source === 'masterImport' && manualEnrollments.some((enrollment) => enrollment.status !== 'archived'));
   const rows = [];
-  for (const course of normalizedCourseEntriesForStudent(student)) {
-    const fee = courseTuitionForStudent(student, courseKey(course), tuitionEntries);
-    const amount = Math.round(parseNumber(fee?.amount));
-    const withdrawal = studentCourseWithdrawalInfo(student, course.header || course.label);
-    if (amount <= 0 && !withdrawal) continue;
-    const standard = inferStandardTuition(amount);
-    rows.push({
-      id: `imported:${student.id}:${courseKey(course)}`,
-      source: 'import',
-      term: course.term || inferTermLabel(course.group, student.sheet),
-      cohort: student.sheet || '',
-      courseName: course.header || course.label,
-      courseLabel: course.label || courseLabel(course),
-      teacherName: importedTeacherNameForCourse(course.header, course.term, student.sheet),
-      amount,
-      originalAmount: standard,
-      paidAmount: 0,
-      balance: 0,
-      paymentLabel: amount > 0 ? studentEffectivePaymentState(student.id, tuitionEntries).label : '未對到科目收費',
-      paymentDate: fee?.paymentDate || tuitionPaymentDateLabel(tuitionEntries),
-      status: '匯入底稿',
-      note: fee?.label || '',
-      withdrawal
-    });
+  if (showImportedRows) {
+    for (const course of normalizedCourseEntriesForStudent(student)) {
+      const fee = courseTuitionForStudent(student, courseKey(course), tuitionEntries);
+      const amount = Math.round(parseNumber(fee?.amount));
+      const withdrawal = studentCourseWithdrawalInfo(student, course.header || course.label);
+      if (amount <= 0 && !withdrawal) continue;
+      const standard = inferStandardTuition(amount);
+      rows.push({
+        id: `imported:${student.id}:${courseKey(course)}`,
+        source: 'import',
+        term: course.term || inferTermLabel(course.group, student.sheet),
+        cohort: student.sheet || '',
+        courseName: course.header || course.label,
+        courseLabel: course.label || courseLabel(course),
+        teacherName: importedTeacherNameForCourse(course.header, course.term, student.sheet),
+        amount,
+        originalAmount: standard,
+        paidAmount: 0,
+        balance: 0,
+        paymentLabel: amount > 0 ? studentEffectivePaymentState(student.id, tuitionEntries).label : '未對到科目收費',
+        paymentDate: fee?.paymentDate || tuitionPaymentDateLabel(tuitionEntries),
+        status: '匯入底稿',
+        note: fee?.label || '',
+        withdrawal
+      });
+    }
   }
 
   const courses = manualCoursesById();
-  for (const enrollment of manualEnrollmentsByStudent().get(student.id) || []) {
+  for (const enrollment of manualEnrollments) {
     const course = courses.get(enrollment.courseId);
     const receivable = receivableForEnrollment(enrollment.id);
     const amount = Math.round(parseNumber(receivable?.amount ?? enrollment.tuitionAmount));
@@ -1257,7 +1269,7 @@ function buildStudentCourseFinanceRows(student) {
 
 function cleanCohortOptions() {
   const importedCohorts = Array.from(new Map(getStudents()
-    .map((student) => [student.sheet || studentCohortCode(student), studentCohortLabel(student)])
+    .map((student) => [studentCohortFilterValue(student), studentCohortLabel(student)])
     .filter(([value]) => value)).entries());
   return Array.from(new Map([
     ...importedCohorts,
@@ -1283,7 +1295,7 @@ function syncCleanStudentForm(student) {
   const profile = student.profile || {};
   form.elements.id.value = student.id || '';
   form.elements.name.value = studentName(student) || '';
-  form.elements.cohort.value = studentCohortCode(student) || student.sheet || current || '112';
+  form.elements.cohort.value = studentCohortFilterValue(student) || current || '112';
   form.elements.highSchool.value = profile.highSchool || '';
   form.elements.juniorHigh.value = profile.juniorHigh || '';
   form.elements.grade.value = profile.grade || '';
