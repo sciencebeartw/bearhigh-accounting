@@ -1525,9 +1525,11 @@ function cleanTeacherRows() {
   const archivedTeacherNames = new Set((state.manualTeachers || [])
     .filter((teacher) => teacher.archived)
     .map((teacher) => normalizedCompareText(teacher.name)));
+  const masterRows = masterTeacherRowsData();
+  const hasMasterCourses = masterRows.some((teacher) => (teacher.courses || []).length);
   return mergeCleanTeacherRows({
-    masterRows: masterTeacherRowsData(),
-    rosterBlocks: getTeacherRosterBlocks(),
+    masterRows,
+    rosterBlocks: hasMasterCourses ? [] : getTeacherRosterBlocks(),
     archivedTeacherNames,
     normalizeText: normalizedCompareText,
     parseAmount: parseNumber,
