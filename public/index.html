@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>BearHigh 帳務</title>
-    <meta name="theme-color" content="#216247">
+    <meta name="theme-color" content="#237fa6">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="BearHigh 帳務">
     <link rel="apple-touch-icon" href="./accounting-touch-icon.png">
@@ -43,7 +43,8 @@
 
     <main class="workspace">
       <nav class="tabs" aria-label="功能切換">
-        <button class="tab is-active" data-tab="student-ledger" type="button">學生資料表</button>
+        <button class="tab is-active" data-tab="monthly-workflow" type="button">本月結算</button>
+        <button class="tab" data-tab="student-ledger" type="button">學生資料表</button>
         <button class="tab" data-tab="teacher-course-ledger" type="button">老師課程表</button>
         <button class="tab" data-tab="movement-ledger" type="button">異動收退費</button>
         <button class="tab" data-tab="teacher-payroll-ledger" type="button">老師薪資表</button>
@@ -57,7 +58,107 @@
         <button class="tab" data-tab="records" type="button">紀錄</button>
       </nav>
 
-      <section class="panel is-active" data-panel="student-ledger">
+      <section class="panel is-active" data-panel="monthly-workflow">
+        <section class="section-block clean-workspace monthly-workflow">
+          <div class="section-heading">
+            <div>
+              <h2>本月結算</h2>
+              <p class="muted">從月底實際工作出發：先補堂次，核對進退班，再產生老師薪資表與快照。</p>
+            </div>
+            <div class="workflow-actions">
+              <button class="ghost" id="monthlyWorkflowOpenPayroll" type="button">打開薪資工具</button>
+              <button class="ghost" id="monthlyWorkflowOpenMovement" type="button">記錄進退班</button>
+            </div>
+          </div>
+          <div class="matrix-filter-bar">
+            <div class="matrix-filter-title">月結月份</div>
+            <div class="filter-grid monthly-filter-grid">
+              <label>
+                <span>月份</span>
+                <input id="monthlyWorkflowMonth" type="month">
+              </label>
+              <div class="actions">
+                <button class="primary" id="monthlyWorkflowBuildSettlement" type="button">產生月底結算</button>
+                <button class="ghost" id="monthlyWorkflowBuildFromImport" type="button">從 Numbers 薪資表建立</button>
+                <button class="ghost" id="monthlyWorkflowPrintSettlement" type="button">列印 / 存 PDF</button>
+                <button class="ghost" id="monthlyWorkflowSaveSettlement" type="button">儲存快照</button>
+              </div>
+            </div>
+          </div>
+          <section class="import-summary" id="monthlyWorkflowSummary"></section>
+          <div class="split-view monthly-workflow-grid">
+            <section class="workflow-panel">
+              <div class="section-heading compact-heading">
+                <div>
+                  <h2>月結作業清單</h2>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>狀態</th>
+                      <th>步驟</th>
+                      <th>目前數字</th>
+                      <th>下一步</th>
+                    </tr>
+                  </thead>
+                  <tbody id="monthlyWorkflowChecklist"></tbody>
+                </table>
+              </div>
+            </section>
+            <section class="workflow-panel">
+              <div class="section-heading compact-heading">
+                <div>
+                  <h2>老師薪資結果</h2>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>老師</th>
+                      <th>課程</th>
+                      <th>堂數</th>
+                      <th>人次</th>
+                      <th>應付</th>
+                      <th>狀態</th>
+                    </tr>
+                  </thead>
+                  <tbody id="monthlyWorkflowTeacherRows"></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+          <section class="workflow-panel">
+            <div class="section-heading compact-heading">
+              <div>
+                <h2>班級堂次核對</h2>
+                <p class="muted">從缺堂次開始處理；點「補堂次」會帶到舊薪資工具該班級。</p>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>狀態</th>
+                    <th>老師</th>
+                    <th>班級 / 課程</th>
+                    <th>學生</th>
+                    <th>堂次</th>
+                    <th>本月異動</th>
+                    <th>提醒</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="monthlyWorkflowCourseRows"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </section>
+
+      <section class="panel" data-panel="student-ledger">
         <section class="section-block clean-workspace">
           <div class="section-heading">
             <div>

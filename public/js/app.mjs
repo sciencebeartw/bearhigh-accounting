@@ -87,6 +87,17 @@ const elements = {
   loginGateStatus: document.querySelector('#loginGateStatus'),
   tabs: document.querySelectorAll('.tab'),
   panels: document.querySelectorAll('.panel'),
+  monthlyWorkflowBuildFromImport: document.querySelector('#monthlyWorkflowBuildFromImport'),
+  monthlyWorkflowBuildSettlement: document.querySelector('#monthlyWorkflowBuildSettlement'),
+  monthlyWorkflowChecklist: document.querySelector('#monthlyWorkflowChecklist'),
+  monthlyWorkflowCourseRows: document.querySelector('#monthlyWorkflowCourseRows'),
+  monthlyWorkflowMonth: document.querySelector('#monthlyWorkflowMonth'),
+  monthlyWorkflowOpenMovement: document.querySelector('#monthlyWorkflowOpenMovement'),
+  monthlyWorkflowOpenPayroll: document.querySelector('#monthlyWorkflowOpenPayroll'),
+  monthlyWorkflowPrintSettlement: document.querySelector('#monthlyWorkflowPrintSettlement'),
+  monthlyWorkflowSaveSettlement: document.querySelector('#monthlyWorkflowSaveSettlement'),
+  monthlyWorkflowSummary: document.querySelector('#monthlyWorkflowSummary'),
+  monthlyWorkflowTeacherRows: document.querySelector('#monthlyWorkflowTeacherRows'),
   cleanMovementCourse: document.querySelector('#cleanMovementCourse'),
   cleanMovementForm: document.querySelector('#cleanMovementForm'),
   cleanMovementRows: document.querySelector('#cleanMovementRows'),
@@ -3488,8 +3499,11 @@ function payrollCloseRows(month) {
     };
   });
 
+  const importedPayrollTitle = monthToImportedPayrollTitle(month);
   const payrollOnlySheets = (state.importSnapshot?.teacherSheets || [])
     .filter((sheet) => (sheet.payrollBlocks || []).length && !(sheet.rosterBlocks || []).length)
+    .filter((sheet) => !importedPayrollTitle || (sheet.payrollBlocks || [])
+      .some((block) => String(block.title || '').includes(importedPayrollTitle)))
     .map((sheet) => ({
       status: '需手動',
       source: '匯入薪資歷史',
@@ -3618,6 +3632,91 @@ function renderPayrollWorkflow() {
       <td>${escapeHtml(row.next)}</td>
     </tr>
   `).join('');
+}
+
+function selectedMonthlyWorkflowMonth() {
+  return elements.monthlyWorkflowMonth?.value ||
+    elements.payrollSettlementMonth.value ||
+    elements.payrollCalcMonth.value ||
+    currentMonthIso();
+}
+
+function syncPayrollMonthFields(month) {
+  if (!month) return;
+  if (elements.monthlyWorkflowMonth) elements.monthlyWorkflowMonth.value = month;
+  elements.payrollSettlementMonth.value = month;
+  elements.payrollCalcMonth.value = month;
+  if (elements.cleanPayrollMonth) elements.cleanPayrollMonth.value = month;
+}
+
+function activeMonthlySettlement(month) {
+  return payrollSettlement?.month === month ? payrollSettlement : latestPayrollSettlementSnapshot(month);
+}
+
+function renderMonthlyWorkflow() {
+  if (!elements.monthlyWorkflowSummary) return;
+  const month = selectedMonthlyWorkflowMonth();
+  syncPayrollMonthFields(month);
+  const closeRows = payrollCloseRows(month);
+  const workflowRows = payrollWorkflowRows(month);
+  const settlement = activeMonthlySettlement(month);
+  const readyCount = closeRows.filter((row) => row.status === '可結算').length;
+  const missingCount = closeRows.filter((row) => row.status === '缺堂次').length;
+  const manualCount = closeRows.filter((row) => row.status === '需手動').length;
+  const eventCount = closeRows.reduce((sum, row) => sum + row.eventCount, 0);
+  const savedSnapshot = latestPayrollSettlementSnapshot(month);
+
+  elements.monthlyWorkflowSummary.innerHTML = [
+    `<div class="summary-cell"><strong>${escapeHtml(month)}</strong><span>結算月份</span></div>`,
+    summaryCell('可結算班級', readyCount),
+    summaryCell('缺堂次班級', missingCount),
+    summaryCell('需手動處理', manualCount),
+    summaryCell('本月異動', eventCount),
+    summaryCell('目前應付總額', settlement?.total || 0),
+    summaryCell('已存快照', savedSnapshot ? 1 : 0)
+  ].join('');
+
+  elements.monthlyWorkflowChecklist.innerHTML = workflowRows.map((row) => `
+    <tr>
+      <td><span class="status-tag ${row.status === '完成' ? 'status-ok' : 'status-warn'}">${escapeHtml(row.status)}</span></td>
+      <td>${escapeHtml(row.step)}</td>
+      <td>${escapeHtml(row.metric)}</td>
+      <td>${escapeHtml(row.next)}</td>
+    </tr>
+  `).join('');
+
+  elements.monthlyWorkflowCourseRows.innerHTML = closeRows.length
+    ? closeRows.map((row) => `
+      <tr ${row.rosterKey ? `data-monthly-open-payroll-block="${escapeHtml(row.rosterKey)}"` : ''}>
+        <td><span class="status-tag ${row.status === '可結算' ? 'status-ok' : 'status-warn'}">${escapeHtml(row.status)}</span></td>
+        <td>${escapeHtml(row.teacherName)}</td>
+        <td>${escapeHtml(row.courseName)}</td>
+        <td class="money">${formatMoney(row.rowCount)}</td>
+        <td class="money">${formatMoney(row.sessionCount)}</td>
+        <td class="money">${formatMoney(row.eventCount)}</td>
+        <td>${escapeHtml(row.note)}</td>
+        <td>${row.rosterKey ? `<button class="ghost small" type="button" data-monthly-open-payroll-block="${escapeHtml(row.rosterKey)}">${row.status === '缺堂次' ? '補堂次' : '查看'}</button>` : ''}</td>
+      </tr>
+    `).join('')
+    : emptyRow(8);
+
+  const classRows = settlement?.classes?.filter((row) => row.sessionCount > 0) || [];
+  elements.monthlyWorkflowTeacherRows.innerHTML = classRows.length
+    ? classRows.map((row) => `
+      <tr>
+        <td><strong>${escapeHtml(row.teacherName)}</strong></td>
+        <td>${escapeHtml(row.courseName)}</td>
+        <td class="money">${formatMoney(row.sessionCount)}</td>
+        <td>${escapeHtml(row.headcountText || '')}</td>
+        <td class="money">${formatMoney(row.total)}</td>
+        <td>${escapeHtml(row.status || row.methodLabel || '')}</td>
+      </tr>
+    `).join('')
+    : `<tr><td colspan="6" class="empty">尚未產生 ${escapeHtml(month)} 月結；先補堂次，再按「產生月底結算」。</td></tr>`;
+
+  const hasSettlement = !!(payrollSettlement?.month === month && payrollSettlement.teachers?.length);
+  elements.monthlyWorkflowPrintSettlement.disabled = !hasSettlement;
+  elements.monthlyWorkflowSaveSettlement.disabled = !hasSettlement;
 }
 
 function payrollSettlementSettings() {
@@ -5089,6 +5188,7 @@ function renderAll() {
   renderPayrollSettlementArchive();
   renderPayrollCloseCheck();
   renderPayrollWorkflow();
+  renderMonthlyWorkflow();
   renderAccounting();
   renderRecords();
   renderManualCourses();
@@ -5136,6 +5236,67 @@ function toCsv(rows) {
 
 elements.tabs.forEach((tab) => {
   tab.addEventListener('click', () => setActiveTab(tab.dataset.tab));
+});
+
+elements.monthlyWorkflowMonth.addEventListener('change', () => {
+  syncPayrollMonthFields(elements.monthlyWorkflowMonth.value || currentMonthIso());
+  renderPayrollCloseCheck();
+  renderPayrollWorkflow();
+  renderCleanPayrollLedger();
+  renderMonthlyWorkflow();
+});
+
+elements.monthlyWorkflowBuildSettlement.addEventListener('click', () => {
+  syncPayrollMonthFields(selectedMonthlyWorkflowMonth());
+  payrollSettlement = buildPayrollSettlementData();
+  renderPayrollSettlement();
+  renderPayrollCloseCheck();
+  renderPayrollWorkflow();
+  renderCleanPayrollLedger();
+  renderMonthlyWorkflow();
+});
+
+elements.monthlyWorkflowBuildFromImport.addEventListener('click', () => {
+  syncPayrollMonthFields(selectedMonthlyWorkflowMonth());
+  payrollSettlement = buildPayrollSettlementFromImportedPayroll();
+  if (payrollSettlement.teachers.length) {
+    setCloudStatus(`已從 Numbers 薪資表建立 ${payrollSettlement.month} 月結`);
+  } else {
+    setCloudStatus('匯入快照中找不到這個月份的 Numbers 薪資表');
+  }
+  renderPayrollSettlement();
+  renderPayrollCloseCheck();
+  renderPayrollWorkflow();
+  renderCleanPayrollLedger();
+  renderMonthlyWorkflow();
+});
+
+elements.monthlyWorkflowPrintSettlement.addEventListener('click', () => {
+  syncPayrollMonthFields(selectedMonthlyWorkflowMonth());
+  elements.printPayrollSettlement.click();
+});
+
+elements.monthlyWorkflowSaveSettlement.addEventListener('click', () => {
+  syncPayrollMonthFields(selectedMonthlyWorkflowMonth());
+  elements.savePayrollSettlement.click();
+});
+
+elements.monthlyWorkflowOpenPayroll.addEventListener('click', () => {
+  syncPayrollMonthFields(selectedMonthlyWorkflowMonth());
+  setActiveTab('payroll');
+  document.querySelector('[data-panel="payroll"]')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+});
+
+elements.monthlyWorkflowOpenMovement.addEventListener('click', () => {
+  setActiveTab('movement-ledger');
+});
+
+elements.monthlyWorkflowCourseRows.addEventListener('click', (event) => {
+  const target = event.target.closest('[data-monthly-open-payroll-block]');
+  if (!target) return;
+  syncPayrollMonthFields(selectedMonthlyWorkflowMonth());
+  setActiveTab('payroll');
+  openPayrollRosterBlock(target.dataset.monthlyOpenPayrollBlock);
 });
 
 [
@@ -5326,8 +5487,13 @@ document.querySelector('#openLegacyPayroll')?.addEventListener('click', () => {
   elements.cleanPayrollMonth,
   elements.cleanPayrollTeacher
 ].forEach((element) => {
-  element?.addEventListener('input', renderCleanPayrollLedger);
-  element?.addEventListener('change', renderCleanPayrollLedger);
+  const refreshCleanPayroll = () => {
+    if (element === elements.cleanPayrollMonth) syncPayrollMonthFields(elements.cleanPayrollMonth.value || currentMonthIso());
+    renderCleanPayrollLedger();
+    renderMonthlyWorkflow();
+  };
+  element?.addEventListener('input', refreshCleanPayroll);
+  element?.addEventListener('change', refreshCleanPayroll);
 });
 
 elements.tuitionForm?.addEventListener('input', renderAllocationPreview);
@@ -5830,6 +5996,7 @@ elements.buildPayrollSettlement.addEventListener('click', () => {
   renderPayrollSettlement();
   renderPayrollCloseCheck();
   renderPayrollWorkflow();
+  renderMonthlyWorkflow();
 });
 
 elements.buildPayrollSettlementFromImport.addEventListener('click', () => {
@@ -5842,6 +6009,7 @@ elements.buildPayrollSettlementFromImport.addEventListener('click', () => {
   renderPayrollSettlement();
   renderPayrollCloseCheck();
   renderPayrollWorkflow();
+  renderMonthlyWorkflow();
 });
 
 elements.printPayrollSettlement.addEventListener('click', () => {
@@ -5916,11 +6084,15 @@ elements.payrollSettlementArchiveRows.addEventListener('click', (event) => {
   elements.payrollSettlementShare
 ].forEach((element) => {
   element.addEventListener('change', () => {
+    if (element === elements.payrollSettlementMonth) syncPayrollMonthFields(elements.payrollSettlementMonth.value || currentMonthIso());
     renderPayrollCloseCheck();
     renderPayrollWorkflow();
-    if (!payrollSettlement) return;
-    payrollSettlement = buildPayrollSettlementData();
-    renderPayrollSettlement();
+    if (payrollSettlement) {
+      payrollSettlement = buildPayrollSettlementData();
+      renderPayrollSettlement();
+    }
+    renderCleanPayrollLedger();
+    renderMonthlyWorkflow();
   });
 });
 
@@ -6787,7 +6959,7 @@ getRedirectResult(auth).catch((error) => {
 onAuthStateChanged(auth, (user) => {
   renderAuth(user);
   if (user) {
-    loadCloudImportSnapshot({ afterLoadTab: 'payroll' }).catch((error) => {
+    loadCloudImportSnapshot({ afterLoadTab: 'monthly-workflow' }).catch((error) => {
       setCloudStatus(`雲端讀取失敗：${error.code || error.message}`);
     });
   }
@@ -6797,6 +6969,7 @@ const initialMonth = currentMonthIso();
 if (!elements.payrollCalcMonth.value) elements.payrollCalcMonth.value = initialMonth;
 if (!elements.payrollSettlementMonth.value) elements.payrollSettlementMonth.value = elements.payrollCalcMonth.value || initialMonth;
 if (elements.cleanPayrollMonth && !elements.cleanPayrollMonth.value) elements.cleanPayrollMonth.value = elements.payrollSettlementMonth.value || initialMonth;
+if (elements.monthlyWorkflowMonth && !elements.monthlyWorkflowMonth.value) elements.monthlyWorkflowMonth.value = elements.payrollSettlementMonth.value || initialMonth;
 
 renderOptions();
 renderAll();

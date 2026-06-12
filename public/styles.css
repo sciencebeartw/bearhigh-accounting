@@ -741,6 +741,55 @@ tr[data-open-payroll-block] {
   margin-top: 0;
 }
 
+.workflow-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.monthly-filter-grid {
+  align-items: end;
+  grid-template-columns: minmax(180px, 0.35fr) minmax(0, 1fr);
+}
+
+.monthly-filter-grid .actions {
+  justify-content: flex-start;
+  padding-top: 0;
+}
+
+.monthly-workflow-grid {
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  margin-bottom: 18px;
+}
+
+.monthly-workflow,
+.monthly-workflow-grid > * {
+  min-width: 0;
+}
+
+.workflow-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.workflow-panel .table-wrap {
+  max-width: 100%;
+  margin-top: 8px;
+}
+
+.compact-heading {
+  margin-bottom: 4px;
+}
+
+.compact-heading h2 {
+  font-size: 1rem;
+}
+
 .settlement-split {
   grid-template-columns: 1fr;
 }
@@ -1087,12 +1136,24 @@ tr.is-selected td {
 @media (max-width: 860px) {
   .form-grid,
   .filter-grid,
+  .monthly-filter-grid,
   .detail-form,
   .profile-grid,
   .accounting-report-grid,
   .record-grid,
+  .monthly-workflow-grid,
   .split-view {
     grid-template-columns: 1fr;
+  }
+
+  .workflow-actions,
+  .monthly-filter-grid .actions {
+    justify-content: stretch;
+  }
+
+  .workflow-actions button,
+  .monthly-filter-grid .actions button {
+    flex: 1 1 180px;
   }
 
   .toolbar-field {
