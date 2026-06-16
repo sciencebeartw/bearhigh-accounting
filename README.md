@@ -129,7 +129,7 @@ python3 src/import/build_firebase_import.py \
 
 - 本機 Numbers：`/Users/huangboyu/Desktop/山熊/山熊升大/高中部學生名冊.numbers`
 - 暫存匯出：`/Users/huangboyu/Desktop/high_roster_export_temp.xlsx`
-- Google Sheet：`114學年 山熊升大 學生名單`
+- Google Sheet：`115學年度 山熊升大 學生資料`（原名 `114學年 山熊升大 學生名單`）
 - Google Sheet id：`1HrLdpUdv_zDtFczsNW-v1N-nXnL1-YgygiXz4siaikA`
 
 ## Firebase

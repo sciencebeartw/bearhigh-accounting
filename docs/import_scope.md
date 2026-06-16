@@ -30,7 +30,7 @@ snapshotBatch
 一個 batch 可以有多個來源，例如：
 
 - `高中部學生名冊.numbers` 匯出的 `.xlsx`
-- `114學年 山熊升大 學生名單` Google Sheet
+- `115學年度 山熊升大 學生資料` Google Sheet（原名 `114學年 山熊升大 學生名單`）
 - 未來國三升高一招生表單或銜接課程名單
 
 ## Parser 原則
