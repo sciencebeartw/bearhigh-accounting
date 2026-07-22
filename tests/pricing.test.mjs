@@ -3,10 +3,26 @@ import assert from 'node:assert/strict';
 
 import { calculateTuitionAllocation } from '../public/js/pricing.mjs';
 import {
+  buildSessionHeadcountRows,
   effectiveSessionsForEvents,
   parseCourseSessionDates,
+  sessionDatesToText,
   validateSessionDatePlan
 } from '../public/js/sessions.mjs';
+
+test('current four-subject package applies the confirmed 5000 discount', () => {
+  const result = calculateTuitionAllocation({
+    pricingVersion: 'current_21600_24',
+    courses: ['math_mingxuan', 'physics', 'chemistry', 'biology'],
+    paidAmount: 81400
+  });
+
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.totals.listPrice, 86400);
+  assert.equal(result.totals.base, 81400);
+  assert.equal(result.totals.builtInPackageDiscount, 5000);
+  assert.equal(result.rows.reduce((sum, row) => sum + row.revenueAmount, 0), 81400);
+});
 
 test('current three-subject package splits to 20600 each', () => {
   const result = calculateTuitionAllocation({
@@ -164,4 +180,31 @@ test('session date plan requires expected session count when provided', () => {
   const errors = validateSessionDatePlan(sessions, 4);
 
   assert.match(errors.join('\n'), /堂次日期 3 筆，與本月堂數 4 不一致/);
+});
+
+test('join date counts that session and withdrawal date excludes that session', () => {
+  const sessions = parseCourseSessionDates('2026-06-01\n2026-06-08\n2026-06-15\n2026-06-22');
+  const joinEvents = [{ date: '2026-06-08', action: '加入' }];
+  const withdrawEvents = [{ date: '2026-06-15', action: '退出' }];
+  const students = [
+    { name: '新生', events: joinEvents, effective: effectiveSessionsForEvents(4, joinEvents, sessions) },
+    { name: '退班生', events: withdrawEvents, effective: effectiveSessionsForEvents(4, withdrawEvents, sessions) }
+  ];
+  const rows = buildSessionHeadcountRows(sessions, students);
+
+  assert.deepEqual(rows.map((row) => row.headcount), [1, 2, 1, 1]);
+  assert.deepEqual(rows[1].joinedNames, ['新生']);
+  assert.deepEqual(rows[2].withdrawnNames, ['退班生']);
+});
+
+test('calendar session notes round-trip without silently changing headcount', () => {
+  const sessions = parseCourseSessionDates('2026-06-12\n2026-06-19 | 不收費');
+  const rows = buildSessionHeadcountRows(sessions, [
+    { name: '學生', events: [], effective: effectiveSessionsForEvents(2, [], sessions) }
+  ]);
+
+  assert.equal(sessions[1].status, '不收費');
+  assert.equal(rows[1].status, '不收費');
+  assert.equal(rows[1].headcount, 1);
+  assert.match(sessionDatesToText(sessions), /2026-06-19 \| 不收費/);
 });

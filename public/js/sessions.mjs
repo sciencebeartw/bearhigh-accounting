@@ -11,19 +11,29 @@ export function normalizeIsoDate(value) {
 }
 
 export function parseCourseSessionDates(value) {
-  const matches = String(value ?? '').match(/\d{4}-\d{1,2}-\d{1,2}/g) || [];
-  const dates = matches.map(normalizeIsoDate).filter(Boolean);
-  return dates.map((date, index) => ({
-    sessionNo: index + 1,
-    date
-  }));
+  const rows = [];
+  for (const line of String(value ?? '').split(/\r?\n/)) {
+    const matches = line.match(/\d{4}-\d{1,2}-\d{1,2}/g) || [];
+    for (const match of matches) {
+      const date = normalizeIsoDate(match);
+      if (!date) continue;
+      const status = matches.length === 1
+        ? line.replace(match, '').replace(/^[\s|｜,，:：-]+/, '').trim()
+        : '';
+      rows.push({ sessionNo: rows.length + 1, date, status });
+    }
+  }
+  return rows;
 }
 
 export function sessionDatesToText(sessions) {
   return (sessions || [])
     .slice()
     .sort((a, b) => Number(a.sessionNo || 0) - Number(b.sessionNo || 0))
-    .map((session) => normalizeIsoDate(session.date))
+    .map((session) => {
+      const date = normalizeIsoDate(session.date);
+      return date && session.status ? `${date} | ${session.status}` : date;
+    })
     .filter(Boolean)
     .join('\n');
 }
@@ -77,12 +87,17 @@ function resolveSessionNo(event, sessions, defaultSessions) {
   };
 }
 
-export function effectiveSessionsForEvents(defaultSessionCount, events, sessionDateRows = []) {
+export function resolveMembershipEventSession(event, sessionDateRows = [], defaultSessionCount = 0) {
   const defaultSessions = Math.max(0, parseInteger(defaultSessionCount));
   const sessions = (sessionDateRows || []).filter((session) => normalizeIsoDate(session.date));
-  let activeFrom = 1;
-  let activeUntil = defaultSessions;
+  return resolveSessionNo(event || {}, sessions, defaultSessions);
+}
+
+export function effectiveSessionsForEvents(defaultSessionCount, events, sessionDateRows = [], options = {}) {
+  const defaultSessions = Math.max(0, parseInteger(defaultSessionCount));
+  const sessions = (sessionDateRows || []).filter((session) => normalizeIsoDate(session.date));
   const notes = [];
+  const resolvedEvents = [];
 
   for (const event of events || []) {
     const resolved = resolveSessionNo(event, sessions, defaultSessions);
@@ -94,19 +109,82 @@ export function effectiveSessionsForEvents(defaultSessionCount, events, sessionD
 
     const sourceNote = resolved.source === 'date' ? '（由日期推算）' : '';
     if (event.action === '退出') {
-      activeUntil = Math.min(activeUntil, resolved.sessionNo - 1);
       notes.push(`${datePrefix}退出第 ${resolved.sessionNo} 堂${sourceNote}`);
     } else if (event.action === '加入') {
-      activeFrom = Math.max(activeFrom, resolved.sessionNo);
       notes.push(`${datePrefix}加入第 ${resolved.sessionNo} 堂${sourceNote}`);
     }
+    resolvedEvents.push({ event, sessionNo: resolved.sessionNo });
   }
 
-  const sessionsCount = Math.max(0, activeUntil - activeFrom + 1);
+  resolvedEvents.sort((left, right) => (
+    left.sessionNo - right.sessionNo ||
+    String(left.event.date || '').localeCompare(String(right.event.date || '')) ||
+    (left.event.action === '退出' ? -1 : 1)
+  ));
+  let active = Object.prototype.hasOwnProperty.call(options, 'initiallyActive')
+    ? options.initiallyActive !== false
+    : resolvedEvents[0]?.event.action !== '加入';
+  let eventIndex = 0;
+  const activeSessionNos = [];
+  for (let sessionNo = 1; sessionNo <= defaultSessions; sessionNo += 1) {
+    while (eventIndex < resolvedEvents.length && resolvedEvents[eventIndex].sessionNo <= sessionNo) {
+      const action = resolvedEvents[eventIndex].event.action;
+      if (action === '退出') active = false;
+      if (action === '加入') active = true;
+      eventIndex += 1;
+    }
+    if (active) activeSessionNos.push(sessionNo);
+  }
+  const activeFrom = activeSessionNos[0] || defaultSessions + 1;
+  const activeUntil = activeSessionNos[activeSessionNos.length - 1] || 0;
   return {
-    sessions: sessionsCount,
+    sessions: activeSessionNos.length,
     note: notes.join('；'),
     activeFrom,
-    activeUntil
+    activeUntil,
+    activeSessionNos
   };
+}
+
+export function buildSessionHeadcountRows(sessionDateRows = [], students = []) {
+  const sessions = (sessionDateRows || [])
+    .filter((session) => normalizeIsoDate(session.date))
+    .slice()
+    .sort((a, b) => Number(a.sessionNo || 0) - Number(b.sessionNo || 0));
+  const defaultSessionCount = sessions.length;
+
+  return sessions.map((session) => {
+    const sessionNo = Number(session.sessionNo || 0);
+    const activeStudents = (students || []).filter((student) => {
+      if (Array.isArray(student.effective?.activeSessionNos)) {
+        return student.effective.activeSessionNos.includes(sessionNo);
+      }
+      return sessionNo >= Number(student.effective?.activeFrom || 1) &&
+        sessionNo <= Number(student.effective?.activeUntil ?? defaultSessionCount);
+    });
+    const joinedNames = [];
+    const withdrawnNames = [];
+
+    for (const student of students || []) {
+      for (const event of student.events || []) {
+        const resolved = resolveMembershipEventSession(event, sessions, defaultSessionCount);
+        if (resolved.sessionNo !== sessionNo) continue;
+        const suffix = event.movementType === '換班'
+          ? `（${event.transferDirection || (event.action === '加入' ? '轉入' : '轉出')}）`
+          : '';
+        if (event.action === '加入') joinedNames.push(`${student.name}${suffix}`);
+        if (event.action === '退出') withdrawnNames.push(`${student.name}${suffix}`);
+      }
+    }
+
+    return {
+      sessionNo,
+      date: normalizeIsoDate(session.date),
+      status: String(session.status || '').trim(),
+      headcount: activeStudents.length,
+      activeNames: activeStudents.map((student) => student.name).filter(Boolean),
+      joinedNames: Array.from(new Set(joinedNames.filter(Boolean))),
+      withdrawnNames: Array.from(new Set(withdrawnNames.filter(Boolean)))
+    };
+  });
 }

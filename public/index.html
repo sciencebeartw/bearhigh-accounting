@@ -6,6 +6,7 @@
     <title>BearHigh 帳務</title>
     <meta name="theme-color" content="#237fa6">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="BearHigh 帳務">
     <link rel="apple-touch-icon" href="./accounting-touch-icon.png">
     <link rel="icon" type="image/png" sizes="192x192" href="./accounting-icon-192.png">
@@ -42,33 +43,55 @@
     </header>
 
     <main class="workspace">
-      <nav class="tabs" aria-label="功能切換">
-        <button class="tab is-active" data-tab="monthly-workflow" type="button">本月結算</button>
-        <button class="tab" data-tab="student-ledger" type="button">學生資料表</button>
-        <button class="tab" data-tab="teacher-course-ledger" type="button">老師課程表</button>
-        <button class="tab" data-tab="movement-ledger" type="button">異動收退費</button>
-        <button class="tab" data-tab="teacher-payroll-ledger" type="button">老師薪資表</button>
-        <button class="tab" data-tab="students" type="button">舊學生</button>
-        <button class="tab" data-tab="courses" type="button">舊課程</button>
-        <button class="tab" data-tab="teachers" type="button">舊老師</button>
-        <button class="tab" data-tab="accounting" type="button">舊收款</button>
-        <button class="tab" data-tab="payroll" type="button">舊薪資</button>
-        <button class="tab" data-tab="events" type="button">舊異動</button>
-        <button class="tab" data-tab="import" type="button">匯入</button>
-        <button class="tab" data-tab="records" type="button">紀錄</button>
+      <nav class="tabs primary-tabs" aria-label="主要功能">
+        <button class="tab is-active" data-tab="monthly-workflow" type="button">工作台</button>
+        <button class="tab" data-tab="student-ledger" type="button">學生帳務</button>
+        <button class="tab" data-tab="teacher-course-ledger" type="button">課程與名單</button>
+        <button class="tab" data-tab="teacher-payroll-ledger" type="button">老師薪資</button>
+        <details class="tools-menu" id="toolsMenu">
+          <summary>工具與設定</summary>
+          <div class="tools-menu-popover">
+            <p>日常補登</p>
+            <button class="tab tool-tab" data-tab="movement-ledger" type="button">進退班與收退費</button>
+            <button class="tab tool-tab" data-tab="accounting" type="button">收款詳細工具</button>
+            <button class="tab tool-tab" data-tab="payroll" type="button">堂次與薪資計算</button>
+            <p>主檔管理</p>
+            <button class="tab tool-tab" data-tab="students" type="button">學生主檔工具</button>
+            <button class="tab tool-tab" data-tab="courses" type="button">課程主檔工具</button>
+            <button class="tab tool-tab" data-tab="teachers" type="button">老師主檔工具</button>
+            <button class="tab tool-tab" data-tab="events" type="button">異動明細工具</button>
+            <p>移轉與稽核</p>
+            <button class="tab tool-tab" data-tab="import" type="button">Numbers 資料移轉</button>
+            <button class="tab tool-tab" data-tab="records" type="button">歷史紀錄與稽核</button>
+          </div>
+        </details>
       </nav>
 
       <section class="panel is-active" data-panel="monthly-workflow">
         <section class="section-block clean-workspace monthly-workflow">
           <div class="section-heading">
             <div>
-              <h2>本月結算</h2>
-              <p class="muted">從月底實際工作出發：先補堂次，核對進退班，再產生老師薪資表與快照。</p>
+              <h2>今天要處理什麼？</h2>
+              <p class="muted">日常記帳從這裡開始；月底再依序補堂次、核對異動、產生薪資與儲存快照。</p>
             </div>
-            <div class="workflow-actions">
-              <button class="ghost" id="monthlyWorkflowOpenPayroll" type="button">打開薪資工具</button>
-              <button class="ghost" id="monthlyWorkflowOpenMovement" type="button">記錄進退班</button>
-            </div>
+          </div>
+          <div class="daily-action-grid" aria-label="常用工作">
+            <button class="daily-action" id="workbenchOpenStudent" type="button">
+              <strong>查學生帳務</strong>
+              <span>看修課、應收、已收與退費</span>
+            </button>
+            <button class="daily-action" id="monthlyWorkflowOpenMovement" type="button">
+              <strong>記進班／退班</strong>
+              <span>記生效日期與影響堂次</span>
+            </button>
+            <button class="daily-action" id="workbenchOpenAccounting" type="button">
+              <strong>記收款／退費</strong>
+              <span>處理分期、折扣與退款</span>
+            </button>
+            <button class="daily-action" id="monthlyWorkflowOpenPayroll" type="button">
+              <strong>補堂次與人數</strong>
+              <span>完成本月老師薪資前置資料</span>
+            </button>
           </div>
           <div class="matrix-filter-bar">
             <div class="matrix-filter-title">月結月份</div>
@@ -78,12 +101,18 @@
                 <input id="monthlyWorkflowMonth" type="month">
               </label>
               <div class="actions">
-                <button class="primary" id="monthlyWorkflowBuildSettlement" type="button">產生月底結算</button>
-                <button class="ghost" id="monthlyWorkflowBuildFromImport" type="button">從 Numbers 薪資表建立</button>
+                <button class="primary" id="monthlyWorkflowBuildSettlement" type="button">產生／重算本月薪資</button>
+                <button class="ghost" id="monthlyWorkflowSaveSettlement" type="button">確認並儲存快照</button>
                 <button class="ghost" id="monthlyWorkflowPrintSettlement" type="button">列印 / 存 PDF</button>
-                <button class="ghost" id="monthlyWorkflowSaveSettlement" type="button">儲存快照</button>
               </div>
             </div>
+            <details class="transition-tools">
+              <summary>承接已在 Numbers 完成的舊月份</summary>
+              <div class="transition-tools-body">
+                <p class="muted">只在搬家期間使用；新的月份直接在 APP 補堂次並結算。</p>
+                <button class="ghost" id="monthlyWorkflowBuildFromImport" type="button">從 Numbers 薪資表建立這個月</button>
+              </div>
+            </details>
           </div>
           <section class="import-summary" id="monthlyWorkflowSummary"></section>
           <div class="split-view monthly-workflow-grid">
@@ -134,7 +163,7 @@
             <div class="section-heading compact-heading">
               <div>
                 <h2>班級堂次核對</h2>
-                <p class="muted">從缺堂次開始處理；點「補堂次」會帶到舊薪資工具該班級。</p>
+                <p class="muted">從缺堂次開始處理；點「補堂次」會直接帶到該班的堂次與薪資計算。</p>
               </div>
             </div>
             <div class="table-wrap">
@@ -162,8 +191,12 @@
         <section class="section-block clean-workspace">
           <div class="section-heading">
             <div>
-              <h2>學生資料表</h2>
-              <p class="muted">從學生出發，核對基本資料、各學年度修課、合報優惠、收款與退班退費。</p>
+              <h2>學生帳務</h2>
+              <p class="muted">先找學生，再處理他的修課、應收、收款、進班、退班與退費。</p>
+            </div>
+            <div class="workflow-actions">
+              <button class="primary" id="cleanStudentOpenAccounting" type="button">記收款／退費</button>
+              <button class="ghost" id="cleanStudentOpenMovement" type="button">記進班／退班</button>
             </div>
           </div>
           <details class="inline-editor clean-student-editor">
@@ -267,8 +300,8 @@
         <section class="section-block clean-workspace">
           <div class="section-heading">
             <div>
-              <h2>老師課程表</h2>
-              <p class="muted">從老師出發，依學期看課程、人數名單、每堂學生費用與收費合計。</p>
+              <h2>課程與名單</h2>
+              <p class="muted">依學期與老師找課程，核對學生名單、每堂費用與進退班狀態。</p>
             </div>
           </div>
           <div class="matrix-filter-bar">
@@ -312,6 +345,22 @@
                 <input name="defaultFixedRate" inputmode="numeric">
               </label>
               <label>
+                <span>計薪模式</span>
+                <select name="payrollMode">
+                  <option value="">依現有設定</option>
+                  <option value="per_head">人數分潤</option>
+                  <option value="mingxuan">明軒保底＋超額</option>
+                  <option value="hourly">鐘點制</option>
+                  <option value="fixed_session">固定每堂</option>
+                </select>
+              </label>
+              <label><span>每人堂收</span><input name="headRate" inputmode="numeric" placeholder="例：670"></label>
+              <label><span>保底 / 堂</span><input name="baseRate" inputmode="numeric" placeholder="例：4500"></label>
+              <label><span>保底人數</span><input name="threshold" inputmode="numeric" placeholder="例：15"></label>
+              <label><span>超額每人</span><input name="extraPerStudent" inputmode="numeric" placeholder="例：300"></label>
+              <label><span>每小時鐘點</span><input name="hourlyRate" inputmode="numeric" placeholder="例：800"></label>
+              <label><span>每堂小時</span><input name="hoursPerSession" inputmode="decimal" placeholder="例：3"></label>
+              <label>
                 <span>聯絡方式</span>
                 <input name="contact" autocomplete="off">
               </label>
@@ -354,10 +403,89 @@
         <section class="section-block clean-workspace">
           <div class="section-heading">
             <div>
-              <h2>異動收退費</h2>
-              <p class="muted">同一頁核對學生、課程、加入/退出、收款與退費；正式金額仍寫入同一套收款流水與退費紀錄。</p>
+              <h2>進退班與收退費</h2>
+              <p class="muted">先記課程生效日期與堂次；有金額時再進入同一位學生的收款／退費工具。</p>
             </div>
+            <button class="ghost" id="movementBackToStudent" type="button">返回學生帳務</button>
           </div>
+          <details class="workflow-card" open>
+            <summary>新生／加科入班（一次完成名單、收款與計薪生效日）</summary>
+            <form class="form-grid compact-form workflow-form" id="quickEnrollmentForm">
+              <label>
+                <span>已有學生</span>
+                <select name="studentId" id="quickEnrollmentStudent"><option value="">＋ 新增學生</option></select>
+              </label>
+              <label>
+                <span>姓名</span>
+                <input name="studentName" required autocomplete="off">
+              </label>
+              <label>
+                <span>分頁／年級</span>
+                <select name="cohort" id="quickEnrollmentCohort" required></select>
+              </label>
+              <label>
+                <span>高中／學校</span>
+                <input name="highSchool" autocomplete="off">
+              </label>
+              <label>
+                <span>年級文字</span>
+                <input name="grade" autocomplete="off" placeholder="例：高一">
+              </label>
+              <label>
+                <span>家長手機</span>
+                <input name="parentPhone" inputmode="tel" autocomplete="off">
+              </label>
+              <label>
+                <span>課程／科目</span>
+                <select name="courseId" id="quickEnrollmentCourse" required></select>
+              </label>
+              <label>
+                <span>這一科學費</span>
+                <input name="tuitionAmount" inputmode="numeric" required placeholder="例：21600">
+              </label>
+              <label>
+                <span>學生第一堂（當天起計人數）</span>
+                <input name="firstClassDate" type="date" required>
+              </label>
+              <label>
+                <span>匯款／繳費日</span>
+                <input name="paymentDate" type="date">
+              </label>
+              <label>
+                <span>收款方式</span>
+                <select name="paymentMethod"><option value="轉帳">轉帳</option><option value="現金">現金</option><option value="刷卡">刷卡</option><option value="其他">其他</option></select>
+              </label>
+              <label class="wide">
+                <span>備註</span>
+                <input name="note" autocomplete="off" placeholder="例：新生、與另一科合報">
+              </label>
+              <div class="wide" id="quickEnrollmentSummary"></div>
+              <div class="actions wide">
+                <button class="primary" type="submit">確認入班並同步老師名單</button>
+              </div>
+            </form>
+          </details>
+          <details class="workflow-card" open>
+            <summary>同科換班（學費與合報不變，只改名單與計薪人數）</summary>
+            <form class="form-grid compact-form workflow-form" id="classTransferForm">
+              <label><span>學生</span><select name="studentId" id="classTransferStudent" required></select></label>
+              <label><span>原班</span><select name="fromCourseId" id="classTransferFromCourse" required></select></label>
+              <label><span>新班</span><select name="toCourseId" id="classTransferToCourse" required></select></label>
+              <label><span>生效日（當天起算新班）</span><input name="effectiveDate" type="date" required></label>
+              <label>
+                <span>換班類型</span>
+                <select name="transferType">
+                  <option value="permanent">正式換班</option>
+                  <option value="temporary">暫時換班／後續換回</option>
+                </select>
+              </label>
+              <label><span>換回日（暫時換班才填）</span><input name="returnDate" type="date"></label>
+              <label class="wide"><span>原因／備註</span><input name="reason" autocomplete="off" placeholder="例：進度暫時調整"></label>
+              <div class="wide" id="classTransferSummary"></div>
+              <div class="actions wide"><button class="primary" type="submit">確認換班，同步兩班計薪人數</button></div>
+            </form>
+          </details>
+          <h3 class="workflow-subheading">既有學生進／退班</h3>
           <form class="form-grid compact-form" id="cleanMovementForm">
             <label>
               <span>學生</span>
@@ -397,7 +525,7 @@
             </label>
             <div class="actions wide">
               <button class="primary" type="submit">記入異動</button>
-              <button class="ghost" id="openLegacyAccounting" type="button">打開收款 / 退費工具</button>
+              <button class="ghost" id="openLegacyAccounting" type="button">繼續處理收款／退費</button>
             </div>
           </form>
           <section class="import-summary" id="cleanMovementSummary"></section>
@@ -424,10 +552,10 @@
         <section class="section-block clean-workspace">
           <div class="section-heading">
             <div>
-              <h2>老師薪資表</h2>
+              <h2>老師薪資</h2>
               <p class="muted">月底最後一步：選月份與老師，核對堂次、人數變化與目前可輸出的薪資表。</p>
             </div>
-            <button class="ghost" id="openLegacyPayroll" type="button">打開薪資計算工具</button>
+            <button class="primary" id="openLegacyPayroll" type="button">補堂次／詳細計算</button>
           </div>
           <div class="matrix-filter-bar">
             <div class="matrix-filter-title">薪資篩選</div>
@@ -708,11 +836,14 @@
           </label>
           <label class="wide">
             <span>本月上課日期</span>
-            <textarea id="payrollSessionDates" rows="3" placeholder="一行一堂，例如 2026-05-03&#10;2026-05-10&#10;2026-05-17&#10;2026-05-24"></textarea>
+            <textarea id="payrollSessionDates" rows="4" placeholder="一行一堂：2026-06-01&#10;特殊堂次可記：2026-06-19 | 不收費"></textarea>
           </label>
           <div class="session-tools wide">
             <div id="payrollSessionSummary" class="muted">選擇老師名單區塊與月份後，可儲存本月堂次日期。</div>
             <button class="ghost" id="savePayrollSessionPlan" type="button" disabled>儲存堂次日期</button>
+          </div>
+          <div class="wide session-headcount-preview" id="payrollSessionHeadcount">
+            <p class="muted">輸入本月上課日期後，這裡會逐堂顯示計薪人數與進退班。</p>
           </div>
           <div class="payroll-inline-event wide">
             <div class="section-heading">
@@ -920,6 +1051,22 @@
               <input name="defaultFixedRate" inputmode="numeric" placeholder="若用鐘點制才填">
             </label>
             <label>
+              <span>計薪模式</span>
+              <select name="payrollMode">
+                <option value="">依現有設定</option>
+                <option value="per_head">人數分潤</option>
+                <option value="mingxuan">明軒保底＋超額</option>
+                <option value="hourly">鐘點制</option>
+                <option value="fixed_session">固定每堂</option>
+              </select>
+            </label>
+            <label><span>每人堂收</span><input name="headRate" inputmode="numeric"></label>
+            <label><span>保底 / 堂</span><input name="baseRate" inputmode="numeric"></label>
+            <label><span>保底人數</span><input name="threshold" inputmode="numeric"></label>
+            <label><span>超額每人</span><input name="extraPerStudent" inputmode="numeric"></label>
+            <label><span>每小時鐘點</span><input name="hourlyRate" inputmode="numeric"></label>
+            <label><span>每堂小時</span><input name="hoursPerSession" inputmode="decimal"></label>
+            <label>
               <span>聯絡方式</span>
               <input name="contact" autocomplete="off">
             </label>
@@ -985,9 +1132,23 @@
               <input name="courseName" required autocomplete="off" placeholder="例：高二國文">
             </label>
             <label>
-              <span>老師</span>
-              <input name="teacherName" autocomplete="off" list="manualTeacherOptions">
+              <span>實際授課老師</span>
+              <input name="instructorName" autocomplete="off" list="manualTeacherOptions">
               <datalist id="manualTeacherOptions"></datalist>
+            </label>
+            <label>
+              <span>薪資歸屬老師</span>
+              <input name="payrollPayeeName" autocomplete="off" list="manualTeacherOptions">
+            </label>
+            <label>
+              <span>本課計薪覆寫</span>
+              <select name="payrollMode">
+                <option value="">依老師設定</option>
+                <option value="per_head">人數分潤</option>
+                <option value="mingxuan">明軒保底＋超額</option>
+                <option value="hourly">鐘點制</option>
+                <option value="fixed_session">固定每堂</option>
+              </select>
             </label>
             <label>
               <span>預設學費</span>
@@ -996,6 +1157,10 @@
             <label>
               <span>堂數</span>
               <input name="sessionCount" inputmode="numeric" placeholder="例：24">
+            </label>
+            <label>
+              <span>課程第一堂</span>
+              <input name="firstSessionDate" type="date">
             </label>
             <label>
               <span>退費單堂</span>
@@ -1352,7 +1517,7 @@
           <div class="section-heading">
             <div>
               <h2>收款流程</h2>
-              <p class="muted">照 Numbers 的工作方式：先建立學生、學期與科目，再用本頁記錄合報優惠、抵用券、分期付款與退班退費。</p>
+              <p class="muted">先建立學生、學期與科目，再在這裡記錄合報優惠、抵用券、分期付款與退班退費。</p>
             </div>
           </div>
           <div class="notice-line">
@@ -1518,6 +1683,10 @@
             <label>
               <span>每堂原價</span>
               <input name="listPricePerSession" inputmode="numeric" placeholder="可自動推算">
+            </label>
+            <label>
+              <span>退班後剩餘科目學費</span>
+              <input name="remainingTuitionAmount" inputmode="numeric" placeholder="一般合報自動重算">
             </label>
             <label>
               <span>退費金額</span>

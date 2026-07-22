@@ -157,10 +157,22 @@ h2 {
 }
 
 .tabs {
+  align-items: center;
   display: flex;
   gap: 8px;
   margin-bottom: 18px;
-  overflow-x: auto;
+  position: relative;
+}
+
+.primary-tabs {
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(20, 35, 46, 0.05);
+  padding: 6px;
+  position: sticky;
+  top: 116px;
+  z-index: 8;
 }
 
 .tab,
@@ -182,6 +194,73 @@ button {
   background: var(--text);
   border-color: var(--text);
   color: white;
+}
+
+.tools-menu {
+  margin-left: auto;
+  position: relative;
+}
+
+.tools-menu summary {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  font-weight: 700;
+  min-height: 40px;
+  padding: 8px 14px;
+  white-space: nowrap;
+}
+
+.tools-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.tools-menu summary::after {
+  content: '▾';
+  font-size: 0.75rem;
+  margin-left: 8px;
+}
+
+.tools-menu.has-active summary,
+.tools-menu[open] summary {
+  background: var(--brand-2);
+  border-color: #b8d8e5;
+  color: var(--brand);
+}
+
+.tools-menu-popover {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 4px;
+  min-width: 250px;
+  padding: 10px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 20;
+}
+
+.tools-menu-popover p {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  margin: 8px 8px 3px;
+}
+
+.tools-menu-popover p:first-child {
+  margin-top: 2px;
+}
+
+.tool-tab {
+  justify-content: flex-start;
+  text-align: left;
+  width: 100%;
 }
 
 .panel {
@@ -749,6 +828,64 @@ tr[data-open-payroll-block] {
   justify-content: flex-end;
 }
 
+.daily-action-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 16px 0;
+}
+
+.daily-action {
+  align-items: flex-start;
+  background: var(--surface);
+  border-color: var(--line);
+  display: flex;
+  flex-direction: column;
+  min-height: 88px;
+  padding: 14px;
+  text-align: left;
+}
+
+.daily-action:hover,
+.daily-action:focus-visible {
+  background: var(--brand-2);
+  border-color: #9ccddd;
+}
+
+.daily-action strong {
+  color: var(--text);
+  font-size: 0.98rem;
+}
+
+.daily-action span {
+  color: var(--muted);
+  font-size: 0.83rem;
+  line-height: 1.4;
+  margin-top: 6px;
+}
+
+.transition-tools {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 10px;
+}
+
+.transition-tools summary {
+  color: var(--brand);
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.transition-tools-body {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  padding-top: 10px;
+}
+
 .monthly-filter-grid {
   align-items: end;
   grid-template-columns: minmax(180px, 0.35fr) minmax(0, 1fr);
@@ -983,6 +1120,47 @@ tr[data-open-payroll-block] {
   margin-top: 12px;
 }
 
+.workflow-card {
+  background: #f8fcfe;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin: 14px 0 20px;
+  padding: 0 14px 14px;
+}
+
+.workflow-card > summary {
+  color: var(--brand);
+  cursor: pointer;
+  font-weight: 800;
+  padding: 14px 0;
+}
+
+.workflow-card .workflow-form {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.workflow-subheading {
+  font-size: 1rem;
+  margin: 6px 0 12px;
+}
+
+.session-headcount-preview {
+  margin-top: 2px;
+}
+
+.notice-line.warning {
+  background: #fff7e8;
+  border-color: #e4bd72;
+  color: #744600;
+}
+
+.notice-line.success {
+  background: #eef9f1;
+  border-color: #9dceaa;
+  color: #245f32;
+}
+
 .section-heading {
   align-items: end;
   display: flex;
@@ -1151,6 +1329,30 @@ tr.is-selected td {
     justify-content: stretch;
   }
 
+  .primary-tabs {
+    overflow-x: auto;
+    position: static;
+  }
+
+  .primary-tabs > .tab {
+    flex: 0 0 auto;
+  }
+
+  .tools-menu {
+    margin-left: 0;
+  }
+
+  .tools-menu-popover {
+    left: 0;
+    position: fixed;
+    right: 12px;
+    top: auto;
+  }
+
+  .daily-action-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .workflow-actions button,
   .monthly-filter-grid .actions button {
     flex: 1 1 180px;
@@ -1200,5 +1402,42 @@ tr.is-selected td {
 
   .result-band {
     flex-direction: column;
+  }
+}
+
+@media (max-width: 520px) {
+  .primary-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+  }
+
+  .primary-tabs > .tab {
+    width: 100%;
+  }
+
+  .tools-menu {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .tools-menu summary {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .tools-menu-popover {
+    left: 0;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+  }
+
+  .daily-action-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .daily-action {
+    min-height: 74px;
   }
 }

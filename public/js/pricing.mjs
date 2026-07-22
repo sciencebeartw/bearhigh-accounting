@@ -15,12 +15,12 @@ export const PRICING_RULES = {
     legacy_16800_24: {
       label: '舊制 24 堂',
       single: 16800,
-      packages: { 1: 16800, 2: 32600, 3: 47400 }
+      packages: { 1: 16800, 2: 32600, 3: 47400, 4: 62200 }
     },
     current_21600_24: {
       label: '今年度調漲 24 堂',
       single: 21600,
-      packages: { 1: 21600, 2: 42200, 3: 61800 }
+      packages: { 1: 21600, 2: 42200, 3: 61800, 4: 81400 }
     }
   },
   specialPackages: {
